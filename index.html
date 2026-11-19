@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Agro Pet - Pedidos</title>
+  <meta name="theme-color" content="#2f6b3a">
+  <link rel="manifest" href="manifest-loja.json">
+  <link rel="icon" href="icones/loja-192.png">
+  <link rel="apple-touch-icon" href="icones/loja-apple.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Agro Pet">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <link rel="stylesheet" href="estilo.css">
+</head>
+<body>
+  <div class="topo">
+    <div class="marca"><span>🐾</span><span id="nomeLoja">Agro Pet</span></div>
+    <button class="btn-instalar oculto" id="btnInstalar">📲 Instalar</button>
+    <button class="btn-carrinho-topo" id="btnCarrinhoTopo" aria-label="Abrir carrinho">
+      🛒 Carrinho <span class="bolinha oculto" id="bolinha">0</span>
+    </button>
+  </div>
+
+  <section class="banner">
+    <div class="caixa" id="banner">
+      <span class="patinhas">🐾</span>
+      <div class="textos">
+        <h1 id="bannerTitulo"></h1>
+        <p id="bannerSub"></p>
+      </div>
+    </div>
+  </section>
+
+  <main class="conteudo">
+    <div class="filtros">
+      <input class="busca" id="busca" type="search" placeholder="Buscar ração, petisco, areia...">
+      <div class="chips" id="chips"></div>
+    </div>
+    <div class="grade" id="grade"></div>
+  </main>
+
+  <div class="barra-carrinho oculto" id="barraCarrinho">
+    <button id="btnBarra"><span id="barraQtd"></span><span id="barraTotal"></span></button>
+  </div>
+
+  <div class="fundo-escuro oculto" id="fundo"></div>
+  <aside class="painel oculto" id="painel" aria-modal="true" role="dialog">
+    <header>
+      <button class="btn-icone oculto" id="btnVoltar" aria-label="Voltar">←</button>
+      <h2 id="painelTitulo">Seu carrinho</h2>
+      <button class="btn-icone" id="btnFechar" aria-label="Fechar">✕</button>
+    </header>
+
+    <!-- passo 1: itens -->
+    <div class="corpo" id="viewItens"></div>
+
+    <!-- passo 2: entrega -->
+    <form class="corpo oculto" id="viewEntrega" novalidate>
+      <div class="secao-form">
+        <h3>Seus dados</h3>
+        <div class="campo"><label for="fNome">Nome</label><input id="fNome" autocomplete="name" required><span class="msg"></span></div>
+        <div class="campo"><label for="fTel">WhatsApp / telefone</label><input id="fTel" type="tel" inputmode="tel" autocomplete="tel" placeholder="(54) 99999-9999" required><span class="msg"></span></div>
+      </div>
+
+      <div class="secao-form">
+        <h3>Quando entregar</h3>
+        <div class="campo"><label for="fData">Data da entrega</label><input id="fData" type="date" required><span class="msg"></span></div>
+        <div class="campo" id="campoHorario"><label>Horário</label><div class="horarios" id="horarios"></div><span class="msg"></span></div>
+      </div>
+
+      <div class="secao-form">
+        <h3>Onde entregar</h3>
+        <div class="linha">
+          <div class="campo"><label for="fCep">CEP</label><input id="fCep" inputmode="numeric" autocomplete="postal-code" placeholder="00000-000" maxlength="9" required><span class="msg">Digite o CEP que a gente completa o endereço</span></div>
+        </div>
+        <div class="campo"><label for="fRua">Rua</label><input id="fRua" autocomplete="address-line1" required><span class="msg"></span></div>
+        <div class="linha">
+          <div class="campo curto"><label for="fNumero">Número</label><input id="fNumero" required><span class="msg"></span></div>
+          <div class="campo"><label for="fCompl">Complemento</label><input id="fCompl" placeholder="Apto, bloco, casa..."><span class="msg"></span></div>
+        </div>
+        <div class="campo"><label for="fBairro">Bairro</label><input id="fBairro" required><span class="msg"></span></div>
+        <div class="linha">
+          <div class="campo"><label for="fCidade">Cidade</label><input id="fCidade" required><span class="msg"></span></div>
+          <div class="campo curto"><label for="fUf">UF</label><input id="fUf" maxlength="2" required><span class="msg"></span></div>
+        </div>
+        <div class="campo"><label for="fRef">Ponto de referência</label><input id="fRef" placeholder="Ex: portão verde, ao lado do mercado" required><span class="msg"></span></div>
+      </div>
+
+      <div class="secao-form">
+        <h3>Pagamento na entrega</h3>
+        <div class="campo">
+          <select id="fPagamento">
+            <option>Pix</option>
+            <option>Cartão de débito</option>
+            <option>Cartão de crédito</option>
+            <option>Dinheiro</option>
+          </select>
+        </div>
+        <div class="campo oculto" id="campoTroco"><label for="fTroco">Troco para quanto?</label><input id="fTroco" inputmode="decimal" placeholder="Ex: 200"><span class="msg"></span></div>
+        <div class="campo"><label for="fObs">Observações</label><textarea id="fObs" rows="2" placeholder="Opcional"></textarea></div>
+      </div>
+    </form>
+
+    <!-- passo 3: confirmado -->
+    <div class="corpo oculto" id="viewOk"></div>
+
+    <footer id="rodapePainel"></footer>
+  </aside>
+
+  <div class="aviso" id="aviso"></div>
+
+  <script src="dados.js"></script>
+  <script src="loja.js"></script>
+  <script src="pwa.js"></script>
+</body>
+</html>

@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Agro Pet - Painel da loja</title>
+  <meta name="theme-color" content="#e0742b">
+  <link rel="manifest" href="manifest-painel.json">
+  <link rel="icon" href="icones/painel-192.png">
+  <link rel="apple-touch-icon" href="icones/painel-apple.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Painel Agro Pet">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <link rel="stylesheet" href="estilo.css">
+  <style>
+    body { padding-bottom: 40px; }
+    .topo a { color: #fff; text-decoration: none; background: rgba(255,255,255,.15); border-radius: 999px; padding: 8px 14px; font-weight: 600; }
+    .aviso-demo { background: var(--laranja-claro); border: 1px solid #f3c9a6; border-radius: 12px; padding: 10px 14px; margin: 16px 0; font-size: 14px; }
+    .abas { display: flex; gap: 8px; margin: 16px 0; }
+    .lista-adm { display: flex; flex-direction: column; gap: 8px; }
+    .linha-adm { display: flex; align-items: center; gap: 12px; background: #fff; border-radius: 12px; padding: 10px; box-shadow: var(--sombra); }
+    .linha-adm.inativo { opacity: .55; }
+    .linha-adm .meio { flex: 1; min-width: 0; }
+    .linha-adm .nome { font-weight: 600; }
+    .linha-adm .sub { color: var(--texto-suave); font-size: 13px; }
+    .linha-adm .valor { text-align: right; white-space: nowrap; }
+    .linha-adm button { flex-shrink: 0; }
+    .previa-banner { border-radius: 12px; overflow: hidden; background: var(--verde-claro); aspect-ratio: 16/5; display: grid; place-items: center; color: var(--texto-suave); margin-bottom: 8px; }
+    .previa-banner img { width: 100%; height: 100%; object-fit: cover; }
+    .previa-foto { width: 96px; height: 96px; border-radius: 12px; background: var(--verde-claro); display: grid; place-items: center; font-size: 40px; overflow: hidden; }
+    .previa-foto img { width: 100%; height: 100%; object-fit: cover; }
+    .dias { display: flex; flex-wrap: wrap; gap: 6px; }
+    .dias label { border: 1px solid var(--borda); border-radius: 8px; padding: 6px 10px; font-size: 13px; cursor: pointer; background: #fff; }
+    .dias label:has(input:checked) { background: var(--erro); color: #fff; border-color: var(--erro); }
+    .dias input { display: none; }
+    .info-promo { background: var(--laranja-claro); border-radius: 10px; padding: 10px 12px; font-size: 14px; display: flex; gap: 10px; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+    .botoes { display: flex; gap: 8px; flex-wrap: wrap; }
+    .botoes > * { flex: 1; }
+    .btn-perigo { border: 1px solid var(--erro); color: var(--erro); background: #fff; border-radius: 12px; padding: 12px; font-weight: 600; }
+    .chk { display: flex; align-items: center; gap: 8px; font-weight: 600; margin-bottom: 10px; }
+  </style>
+</head>
+<body>
+  <div class="topo">
+    <div class="marca"><span>⚙️</span><span>Painel da loja</span></div>
+    <button class="btn-instalar oculto" id="btnInstalar">📲 Instalar</button>
+    <a href="index.html">Ver loja</a>
+  </div>
+
+  <main class="conteudo" style="max-width:760px">
+    <div class="aviso-demo">
+      <b>Versão de teste:</b> o que você salvar aqui fica só neste navegador. Para os clientes verem, os produtos ainda precisam ser ligados a um lugar central.
+    </div>
+
+    <div class="abas">
+      <button class="chip ativo" data-aba="produtos">Produtos</button>
+      <button class="chip" data-aba="loja">Banner e entrega</button>
+    </div>
+
+    <!-- ===== produtos ===== -->
+    <section id="abaProdutos">
+      <div class="botoes" style="margin-bottom:12px">
+        <button class="btn-principal" id="btnNovo">+ Novo produto</button>
+      </div>
+      <input class="busca" id="buscaAdm" type="search" placeholder="Buscar produto" style="margin-bottom:12px">
+      <div class="lista-adm" id="listaAdm"></div>
+    </section>
+
+    <!-- ===== loja ===== -->
+    <section id="abaLoja" class="oculto">
+      <div class="secao-form">
+        <h3>Banner da empresa</h3>
+        <div class="previa-banner" id="previaBanner">Sem imagem (usa o fundo verde)</div>
+        <div class="botoes" style="margin-bottom:10px">
+          <label class="btn-secundario" style="text-align:center;cursor:pointer">Escolher imagem<input type="file" id="arqBanner" accept="image/*" hidden></label>
+          <button class="btn-perigo" id="btnTirarBanner" type="button">Tirar imagem</button>
+        </div>
+        <label class="chk"><input type="checkbox" id="cComTexto"> Escrever as frases por cima da imagem</label>
+        <div class="campo"><label for="cNome">Nome da loja</label><input id="cNome"></div>
+        <div class="campo"><label for="cTitulo">Frase principal do banner</label><input id="cTitulo"></div>
+        <div class="campo"><label for="cSub">Frase menor</label><input id="cSub"></div>
+      </div>
+
+      <div class="secao-form">
+        <h3>Pedidos e entrega</h3>
+        <div class="campo"><label for="cWhats">WhatsApp que recebe os pedidos (com DDD)</label><input id="cWhats" inputmode="tel" placeholder="54 99999-9999"><span class="msg">O pedido chega pronto nesse número</span></div>
+        <div class="campo"><label for="cHorarios">Horários de entrega (um por linha)</label><textarea id="cHorarios" rows="4"></textarea></div>
+        <div class="campo"><label>Dias SEM entrega</label><div class="dias" id="cDias"></div></div>
+        <div class="campo"><label for="cTaxa">Taxa de entrega (R$, 0 = grátis)</label><input id="cTaxa" inputmode="decimal"></div>
+      </div>
+      <button class="btn-principal" id="btnSalvarLoja" style="width:100%">Salvar</button>
+    </section>
+  </main>
+
+  <!-- editor de produto -->
+  <div class="fundo-escuro oculto" id="fundo"></div>
+  <aside class="painel oculto" id="painel" role="dialog" aria-modal="true">
+    <header>
+      <h2 id="edTitulo">Produto</h2>
+      <button class="btn-icone" id="btnFechar" aria-label="Fechar">✕</button>
+    </header>
+    <form class="corpo" id="formProduto" novalidate>
+      <div class="secao-form">
+        <div style="display:flex;gap:12px;align-items:center;margin-bottom:10px">
+          <div class="previa-foto" id="previaFoto"></div>
+          <div style="display:flex;flex-direction:column;gap:6px">
+            <label class="btn-secundario" style="cursor:pointer;text-align:center">Escolher foto<input type="file" id="arqFoto" accept="image/*" hidden></label>
+            <button type="button" class="btn-icone" id="btnTirarFoto" style="font-size:13px">Tirar foto</button>
+          </div>
+        </div>
+        <div class="campo"><label for="pNome">Nome</label><input id="pNome" required><span class="msg"></span></div>
+        <div class="linha">
+          <div class="campo"><label for="pDetalhe">Peso / tamanho</label><input id="pDetalhe" placeholder="Ex: 15 kg"></div>
+          <div class="campo"><label for="pCategoria">Categoria</label><input id="pCategoria" list="listaCategorias" placeholder="Cachorro, Gato..."><datalist id="listaCategorias"></datalist></div>
+        </div>
+      </div>
+
+      <div class="secao-form">
+        <h3>Preço</h3>
+        <div id="infoPromo"></div>
+        <div class="campo"><label for="pPreco">Preço de venda (R$)</label><input id="pPreco" inputmode="decimal" required><span class="msg">Se baixar o preço, o app mostra como promoção ("de ... por ...")</span></div>
+        <div class="campo"><label for="pPrecoDe">Preço "de" riscado (R$) — opcional</label><input id="pPrecoDe" inputmode="decimal" placeholder="Vazio = sem promoção"><span class="msg"></span></div>
+      </div>
+
+      <label class="chk"><input type="checkbox" id="pAtivo"> Aparece na loja</label>
+    </form>
+    <footer>
+      <button class="btn-principal" id="btnSalvarProduto">Salvar produto</button>
+      <button class="btn-perigo" id="btnExcluir">Excluir produto</button>
+    </footer>
+  </aside>
+
+  <div class="aviso" id="aviso"></div>
+
+  <script src="dados.js"></script>
+  <script src="admin.js"></script>
+  <script src="pwa.js"></script>
+</body>
+</html>

@@ -1,0 +1,217 @@
+:root {
+  --verde: #2f6b3a;
+  --verde-escuro: #224f2a;
+  --verde-claro: #e7f1e4;
+  --laranja: #e0742b;
+  --laranja-claro: #fdebdd;
+  --fundo: #f7f5f0;
+  --cartao: #ffffff;
+  --texto: #1f2a1f;
+  --texto-suave: #5d6b5c;
+  --borda: #e2ded3;
+  --erro: #b3261e;
+  --raio: 14px;
+  --sombra: 0 1px 2px rgba(0,0,0,.06), 0 4px 14px rgba(0,0,0,.05);
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  background: var(--fundo);
+  color: var(--texto);
+  font-size: 15px;
+  line-height: 1.4;
+  padding-bottom: 96px;
+}
+button, input, select, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; }
+img { max-width: 100%; display: block; }
+.oculto { display: none !important; }
+
+/* ---------- topo ---------- */
+.topo {
+  position: sticky; top: 0; z-index: 20;
+  background: var(--verde); color: #fff;
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 16px;
+}
+.topo .marca { font-weight: 700; font-size: 18px; flex: 1; display: flex; align-items: center; gap: 8px; }
+.btn-carrinho-topo {
+  position: relative; background: rgba(255,255,255,.15); border: 0; color: #fff;
+  border-radius: 999px; padding: 8px 14px; font-weight: 600;
+}
+.btn-carrinho-topo .bolinha {
+  position: absolute; top: -4px; right: -4px; background: var(--laranja); color: #fff;
+  font-size: 12px; min-width: 20px; height: 20px; border-radius: 10px; display: grid; place-items: center; padding: 0 5px;
+}
+
+.btn-instalar {
+  background: #fff; color: var(--verde-escuro); border: 0; border-radius: 999px;
+  padding: 8px 12px; font-weight: 700; white-space: nowrap;
+}
+.dica-ios {
+  display: flex; align-items: center; gap: 8px; background: var(--laranja-claro);
+  border-bottom: 1px solid #f3c9a6; padding: 10px 16px; font-size: 14px;
+}
+.dica-ios > span { flex: 1; }
+.icone-compartilhar { display: inline-block; border: 1.5px solid currentColor; border-radius: 4px; padding: 0 4px; font-size: 12px; }
+/* instalado como app: respeita o entalhe/barra do celular */
+@media (display-mode: standalone) {
+  .topo { padding-top: calc(10px + env(safe-area-inset-top)); }
+}
+
+.conteudo { max-width: 1100px; margin: 0 auto; padding: 0 16px; }
+
+/* ---------- banner ---------- */
+.banner {
+  margin: 16px auto 0; max-width: 1100px; padding: 0 16px;
+}
+.banner .caixa {
+  border-radius: var(--raio); overflow: hidden; position: relative;
+  background: linear-gradient(120deg, var(--verde) 0%, #4f8d4a 60%, #8bb35a 100%);
+  color: #fff; min-height: 150px; display: flex; align-items: flex-end;
+}
+.banner .caixa img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.banner .caixa.com-imagem::after {
+  content: ""; position: absolute; inset: 0; background: linear-gradient(0deg, rgba(0,0,0,.55), rgba(0,0,0,0) 65%);
+}
+.banner .textos { position: relative; z-index: 1; padding: 20px; }
+.banner h1 { margin: 0 0 4px; font-size: 24px; line-height: 1.15; }
+.banner p { margin: 0; opacity: .92; }
+.banner .patinhas { position: absolute; right: 16px; top: 10px; font-size: 56px; opacity: .25; z-index: 0; }
+
+/* ---------- busca e filtros ---------- */
+.filtros { margin: 16px 0 8px; display: flex; flex-direction: column; gap: 10px; }
+.busca {
+  width: 100%; padding: 12px 14px; border-radius: 999px; border: 1px solid var(--borda); background: #fff;
+}
+.chips { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 2px; }
+.chip {
+  border: 1px solid var(--borda); background: #fff; border-radius: 999px; padding: 6px 14px; white-space: nowrap;
+}
+.chip.ativo { background: var(--verde); color: #fff; border-color: var(--verde); }
+
+/* ---------- produtos ---------- */
+.grade { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; margin: 8px 0 24px; }
+.produto {
+  background: var(--cartao); border-radius: var(--raio); box-shadow: var(--sombra);
+  display: flex; flex-direction: column; overflow: hidden; position: relative;
+}
+.produto .foto {
+  aspect-ratio: 1 / 1; background: var(--verde-claro); display: grid; place-items: center; font-size: 52px;
+}
+.produto .foto img { width: 100%; height: 100%; object-fit: cover; }
+.produto .selo {
+  position: absolute; top: 8px; left: 8px; background: var(--laranja); color: #fff;
+  font-size: 12px; font-weight: 700; border-radius: 6px; padding: 3px 7px;
+}
+.produto .info { padding: 10px 12px 12px; display: flex; flex-direction: column; gap: 4px; flex: 1; }
+.produto .nome { font-weight: 600; font-size: 14px; }
+.produto .detalhe { color: var(--texto-suave); font-size: 13px; }
+.produto .precos { margin-top: auto; padding-top: 6px; }
+.preco-de { color: var(--texto-suave); text-decoration: line-through; font-size: 13px; }
+.preco { font-weight: 800; font-size: 18px; color: var(--verde-escuro); }
+.preco.promo { color: var(--laranja); }
+
+.btn-add {
+  margin-top: 8px; width: 100%; border: 0; border-radius: 10px; background: var(--verde); color: #fff;
+  padding: 9px; font-weight: 600;
+}
+.btn-add:hover { background: var(--verde-escuro); }
+.passo {
+  margin-top: 8px; display: flex; align-items: center; justify-content: space-between;
+  border: 1px solid var(--verde); border-radius: 10px; overflow: hidden;
+}
+.passo button { border: 0; background: var(--verde-claro); width: 38px; height: 36px; font-size: 18px; font-weight: 700; color: var(--verde-escuro); }
+.passo span { font-weight: 700; }
+
+.vazio { text-align: center; color: var(--texto-suave); padding: 40px 0; grid-column: 1 / -1; }
+
+/* ---------- barra do carrinho ---------- */
+.barra-carrinho {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 30;
+  padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
+  background: linear-gradient(0deg, var(--fundo) 70%, rgba(247,245,240,0));
+}
+.barra-carrinho button {
+  max-width: 600px; margin: 0 auto; width: 100%; display: flex; align-items: center; justify-content: space-between;
+  background: var(--laranja); color: #fff; border: 0; border-radius: 14px; padding: 14px 18px; font-weight: 700; font-size: 16px;
+  box-shadow: 0 6px 18px rgba(224,116,43,.35);
+}
+
+/* ---------- painel lateral (carrinho / finalizar) ---------- */
+.fundo-escuro { position: fixed; inset: 0; background: rgba(0,0,0,.4); z-index: 40; }
+.painel {
+  position: fixed; top: 0; right: 0; bottom: 0; z-index: 50; width: min(460px, 100%);
+  background: var(--fundo); display: flex; flex-direction: column; box-shadow: -8px 0 30px rgba(0,0,0,.15);
+}
+.painel header {
+  display: flex; align-items: center; gap: 10px; padding: 14px 16px; background: #fff; border-bottom: 1px solid var(--borda);
+}
+.painel header h2 { margin: 0; font-size: 18px; flex: 1; }
+.btn-icone { border: 0; background: transparent; font-size: 22px; line-height: 1; padding: 4px 8px; border-radius: 8px; }
+.btn-icone:hover { background: var(--verde-claro); }
+.painel .corpo { flex: 1; overflow-y: auto; padding: 16px; }
+.painel footer { padding: 14px 16px calc(14px + env(safe-area-inset-bottom)); background: #fff; border-top: 1px solid var(--borda); display: flex; flex-direction: column; gap: 8px; }
+
+.item-carrinho { display: flex; gap: 12px; background: #fff; border-radius: 12px; padding: 10px; margin-bottom: 10px; align-items: center; }
+.item-carrinho .mini { width: 56px; height: 56px; border-radius: 10px; background: var(--verde-claro); display: grid; place-items: center; font-size: 28px; overflow: hidden; flex-shrink: 0; }
+.item-carrinho .mini img { width: 100%; height: 100%; object-fit: cover; }
+.item-carrinho .meio { flex: 1; min-width: 0; }
+.item-carrinho .meio .nome { font-weight: 600; font-size: 14px; }
+.item-carrinho .meio .sub { color: var(--texto-suave); font-size: 13px; }
+.item-carrinho .passo { margin-top: 6px; width: 120px; }
+.item-carrinho .passo button { width: 34px; height: 30px; }
+.item-carrinho .total-item { font-weight: 700; white-space: nowrap; }
+
+.linha-total { display: flex; justify-content: space-between; }
+.linha-total.grande { font-size: 18px; font-weight: 800; }
+.btn-principal { border: 0; border-radius: 12px; background: var(--verde); color: #fff; padding: 14px; font-weight: 700; font-size: 16px; }
+.btn-principal:hover { background: var(--verde-escuro); }
+.btn-principal:disabled { opacity: .6; cursor: default; }
+.btn-secundario { border: 1px solid var(--verde); border-radius: 12px; background: #fff; color: var(--verde-escuro); padding: 12px; font-weight: 600; }
+
+/* ---------- formulário ---------- */
+.secao-form { background: #fff; border-radius: 12px; padding: 14px; margin-bottom: 12px; }
+.secao-form h3 { margin: 0 0 10px; font-size: 15px; }
+.campo { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; }
+.campo label { font-size: 13px; font-weight: 600; color: var(--texto-suave); }
+.campo input, .campo select, .campo textarea {
+  border: 1px solid var(--borda); border-radius: 10px; padding: 10px 12px; background: #fff; width: 100%;
+}
+.campo input:focus, .campo select:focus, .campo textarea:focus { outline: 2px solid var(--verde); outline-offset: 0; border-color: var(--verde); }
+.campo.erro input, .campo.erro select { border-color: var(--erro); }
+.campo .msg { font-size: 12px; color: var(--texto-suave); }
+.campo.erro .msg { color: var(--erro); }
+.linha { display: flex; gap: 10px; }
+.linha > .campo { flex: 1; min-width: 0; }
+.linha > .campo.curto { flex: 0 0 110px; }
+
+.horarios { display: flex; flex-wrap: wrap; gap: 8px; }
+.horarios label {
+  border: 1px solid var(--borda); border-radius: 10px; padding: 8px 12px; background: #fff; cursor: pointer; font-size: 14px;
+}
+.horarios input { display: none; }
+.horarios label:has(input:checked) { background: var(--verde); color: #fff; border-color: var(--verde); }
+.horarios label.indisponivel { opacity: .4; cursor: not-allowed; text-decoration: line-through; }
+
+/* ---------- confirmação ---------- */
+.confirmado { text-align: center; padding: 24px 8px; }
+.confirmado .grande { font-size: 56px; }
+.resumo-pedido { white-space: pre-wrap; text-align: left; background: #fff; border-radius: 12px; padding: 12px; font-size: 13px; margin-top: 12px; }
+
+/* ---------- aviso ---------- */
+.aviso {
+  position: fixed; left: 50%; bottom: 96px; transform: translateX(-50%); z-index: 60;
+  background: var(--texto); color: #fff; padding: 10px 16px; border-radius: 10px; font-size: 14px;
+  opacity: 0; transition: opacity .2s; pointer-events: none; max-width: calc(100% - 32px);
+}
+.aviso.mostrar { opacity: 1; }
+
+@media (min-width: 700px) {
+  .banner .caixa { min-height: 220px; }
+  .banner h1 { font-size: 32px; }
+  .filtros { flex-direction: row; align-items: center; }
+  .busca { max-width: 340px; }
+}

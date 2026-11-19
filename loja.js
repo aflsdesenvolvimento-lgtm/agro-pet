@@ -1,0 +1,436 @@
+// Loja (tela do cliente): catálogo, carrinho, entrega e envio do pedido.
+
+const CHAVE_CARRINHO = "agropet_carrinho_v1";
+const CHAVE_PEDIDOS = "agropet_pedidos_v1";
+const ANTECEDENCIA_MIN = 60; // minutos de folga pra um horário de hoje ainda valer
+
+const loja = carregarLoja();
+let carrinho = lerCarrinho();      // { idProduto: quantidade }
+let categoriaAtiva = "Todos";
+let termoBusca = "";
+let passo = "itens";               // itens | entrega | ok
+
+const $ = id => document.getElementById(id);
+const DIAS = ["domingo", "segunda", "terça", "quarta", "quinta", "sexta", "sábado"];
+
+// ---------------- carrinho ----------------
+function lerCarrinho() {
+  try { return JSON.parse(localStorage.getItem(CHAVE_CARRINHO)) || {}; } catch (e) { return {}; }
+}
+function gravarCarrinho() {
+  try { localStorage.setItem(CHAVE_CARRINHO, JSON.stringify(carrinho)); } catch (e) {}
+}
+function produtoPorId(id) { return loja.produtos.find(p => p.id === id && p.ativo); }
+
+function itensDoCarrinho() {
+  return Object.entries(carrinho)
+    .map(([id, qtd]) => ({ p: produtoPorId(id), qtd }))
+    .filter(i => i.p && i.qtd > 0);
+}
+function totais() {
+  const itens = itensDoCarrinho();
+  const qtd = itens.reduce((s, i) => s + i.qtd, 0);
+  const subtotal = itens.reduce((s, i) => s + i.qtd * i.p.preco, 0);
+  const economia = itens.reduce((s, i) => s + (emPromocao(i.p) ? i.qtd * (i.p.precoDe - i.p.preco) : 0), 0);
+  const taxa = qtd > 0 ? Number(loja.config.taxaEntrega || 0) : 0;
+  return { itens, qtd, subtotal, economia, taxa, total: subtotal + taxa };
+}
+function mudarQtd(id, delta) {
+  const nova = Math.max(0, (carrinho[id] || 0) + delta);
+  if (nova === 0) delete carrinho[id]; else carrinho[id] = nova;
+  gravarCarrinho();
+  atualizarTudo();
+  if (delta > 0 && nova === 1) avisar("Adicionado ao carrinho");
+}
+
+// ---------------- topo e banner ----------------
+function montarTopo() {
+  const c = loja.config;
+  document.title = `${c.nome} - Pedidos`;
+  $("nomeLoja").textContent = c.nome;
+  $("bannerTitulo").textContent = c.bannerTitulo || c.nome;
+  $("bannerSub").textContent = c.bannerSub || "";
+  const caixa = $("banner");
+  caixa.querySelector("img")?.remove();
+  if (c.bannerImg) {
+    const img = document.createElement("img");
+    img.src = c.bannerImg;
+    img.alt = "";
+    caixa.prepend(img);
+    caixa.classList.toggle("com-imagem", c.bannerComTexto !== false);
+  } else {
+    caixa.classList.remove("com-imagem");
+  }
+  const semTexto = !!c.bannerImg && c.bannerComTexto === false;
+  caixa.querySelector(".textos").classList.toggle("oculto", semTexto);
+  caixa.querySelector(".patinhas").classList.toggle("oculto", !!c.bannerImg);
+  caixa.style.minHeight = semTexto ? "0" : "";
+  caixa.style.aspectRatio = semTexto ? "16 / 5" : "";
+}
+
+// ---------------- catálogo ----------------
+function montarChips() {
+  const cats = ["Todos", "Promoções", ...new Set(loja.produtos.filter(p => p.ativo).map(p => p.categoria))];
+  $("chips").innerHTML = cats.map(c =>
+    `<button class="chip ${c === categoriaAtiva ? "ativo" : ""}" data-cat="${escaparHtml(c)}">${c === "Promoções" ? "🔥 " : ""}${escaparHtml(c)}</button>`
+  ).join("");
+}
+
+function normalizar(s) { return String(s).normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase(); }
+
+function montarGrade() {
+  const termo = normalizar(termoBusca.trim());
+  const lista = loja.produtos.filter(p => {
+    if (!p.ativo) return false;
+    if (categoriaAtiva === "Promoções" && !emPromocao(p)) return false;
+    if (categoriaAtiva !== "Todos" && categoriaAtiva !== "Promoções" && p.categoria !== categoriaAtiva) return false;
+    if (termo && !normalizar(`${p.nome} ${p.detalhe} ${p.categoria}`).includes(termo)) return false;
+    return true;
+  });
+  if (!lista.length) {
+    $("grade").innerHTML = `<div class="vazio">Nenhum produto encontrado.</div>`;
+    return;
+  }
+  $("grade").innerHTML = lista.map(p => {
+    const qtd = carrinho[p.id] || 0;
+    const promo = emPromocao(p);
+    const foto = p.foto ? `<img src="${escaparHtml(p.foto)}" alt="">` : iconeDe(p.categoria);
+    const botao = qtd
+      ? `<div class="passo"><button data-menos="${p.id}" aria-label="Diminuir">−</button><span>${qtd}</span><button data-mais="${p.id}" aria-label="Aumentar">+</button></div>`
+      : `<button class="btn-add" data-mais="${p.id}">Adicionar</button>`;
+    return `
+      <article class="produto">
+        ${promo ? `<span class="selo">-${descontoPct(p)}%</span>` : ""}
+        <div class="foto">${foto}</div>
+        <div class="info">
+          <div class="nome">${escaparHtml(p.nome)}</div>
+          <div class="detalhe">${escaparHtml(p.detalhe)}</div>
+          <div class="precos">
+            ${promo ? `<div class="preco-de">de ${real(p.precoDe)}</div>` : ""}
+            <div class="preco ${promo ? "promo" : ""}">${promo ? "por " : ""}${real(p.preco)}</div>
+          </div>
+          ${botao}
+        </div>
+      </article>`;
+  }).join("");
+}
+
+function atualizarBarra() {
+  const t = totais();
+  $("bolinha").textContent = t.qtd;
+  $("bolinha").classList.toggle("oculto", t.qtd === 0);
+  $("barraCarrinho").classList.toggle("oculto", t.qtd === 0 || painelAberto());
+  $("barraQtd").textContent = `🛒 ${t.qtd} ${t.qtd === 1 ? "item" : "itens"} · Ver carrinho`;
+  $("barraTotal").textContent = real(t.subtotal);
+}
+
+// ---------------- painel (carrinho → entrega → ok) ----------------
+function painelAberto() { return !$("painel").classList.contains("oculto"); }
+
+function abrirPainel(p = "itens") {
+  passo = p;
+  $("painel").classList.remove("oculto");
+  $("fundo").classList.remove("oculto");
+  document.body.style.overflow = "hidden";
+  montarPainel();
+  atualizarBarra();
+}
+function fecharPainel() {
+  $("painel").classList.add("oculto");
+  $("fundo").classList.add("oculto");
+  document.body.style.overflow = "";
+  if (passo === "ok") passo = "itens";
+  atualizarBarra();
+}
+
+function montarPainel() {
+  $("viewItens").classList.toggle("oculto", passo !== "itens");
+  $("viewEntrega").classList.toggle("oculto", passo !== "entrega");
+  $("viewOk").classList.toggle("oculto", passo !== "ok");
+  $("btnVoltar").classList.toggle("oculto", passo !== "entrega");
+  $("painelTitulo").textContent = { itens: "Seu carrinho", entrega: "Entrega", ok: "Pedido enviado" }[passo];
+
+  const t = totais();
+  if (passo === "itens") {
+    $("viewItens").innerHTML = t.itens.length ? t.itens.map(({ p, qtd }) => `
+      <div class="item-carrinho">
+        <div class="mini">${p.foto ? `<img src="${escaparHtml(p.foto)}" alt="">` : iconeDe(p.categoria)}</div>
+        <div class="meio">
+          <div class="nome">${escaparHtml(p.nome)}</div>
+          <div class="sub">${escaparHtml(p.detalhe)} · ${real(p.preco)} cada</div>
+          <div class="passo"><button data-menos="${p.id}" aria-label="Diminuir">−</button><span>${qtd}</span><button data-mais="${p.id}" aria-label="Aumentar">+</button></div>
+        </div>
+        <div class="total-item">${real(p.preco * qtd)}</div>
+      </div>`).join("")
+      : `<div class="vazio">Seu carrinho está vazio.<br>Que tal dar uma olhada nas rações? 🐶🐱</div>`;
+
+    $("rodapePainel").innerHTML = t.itens.length ? `
+      ${t.economia > 0 ? `<div class="linha-total" style="color:var(--laranja)"><span>Você economiza</span><span>${real(t.economia)}</span></div>` : ""}
+      ${t.taxa > 0 ? `<div class="linha-total"><span>Taxa de entrega</span><span>${real(t.taxa)}</span></div>` : ""}
+      <div class="linha-total grande"><span>Total</span><span>${real(t.total)}</span></div>
+      <button class="btn-principal" id="btnIrEntrega">Escolher entrega</button>
+      <button class="btn-secundario" id="btnContinuar">Continuar comprando</button>`
+      : `<button class="btn-principal" id="btnContinuar">Ver produtos</button>`;
+  }
+
+  if (passo === "entrega") {
+    prepararData();
+    $("rodapePainel").innerHTML = `
+      <div class="linha-total grande"><span>Total</span><span>${real(t.total)}</span></div>
+      <button class="btn-principal" id="btnEnviar">Enviar pedido${loja.config.whatsapp ? " pelo WhatsApp" : ""}</button>`;
+  }
+
+  if (passo === "ok") {
+    $("rodapePainel").innerHTML = `<button class="btn-principal" id="btnContinuar">Voltar pra loja</button>`;
+  }
+}
+
+// ---------------- data e horário ----------------
+function hojeISO() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+function dataDeISO(iso) { const [a, m, d] = iso.split("-").map(Number); return new Date(a, m - 1, d); }
+function minutosDoInicio(faixa) {
+  const m = String(faixa).match(/(\d{1,2}):(\d{2})/);
+  return m ? Number(m[1]) * 60 + Number(m[2]) : 0;
+}
+function horarioDisponivel(dataIso, faixa) {
+  if (dataIso !== hojeISO()) return true;
+  const agora = new Date();
+  return minutosDoInicio(faixa) - (agora.getHours() * 60 + agora.getMinutes()) >= ANTECEDENCIA_MIN;
+}
+function diaFechado(dataIso) {
+  return (loja.config.diasSemEntrega || []).includes(dataDeISO(dataIso).getDay());
+}
+
+function prepararData() {
+  const campo = $("fData");
+  campo.min = hojeISO();
+  if (!campo.value) {
+    // sugere o primeiro dia com algum horário livre
+    const d = new Date();
+    for (let i = 0; i < 14; i++) {
+      const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+      if (!diaFechado(iso) && loja.config.horarios.some(h => horarioDisponivel(iso, h))) { campo.value = iso; break; }
+      d.setDate(d.getDate() + 1);
+    }
+  }
+  montarHorarios();
+}
+
+function montarHorarios() {
+  const iso = $("fData").value;
+  const marcado = document.querySelector('input[name="horario"]:checked')?.value;
+  const fechado = iso && diaFechado(iso);
+  const campoData = $("fData").closest(".campo");
+  campoData.classList.toggle("erro", !!fechado);
+  campoData.querySelector(".msg").textContent = fechado ? `Não entregamos ${DIAS[dataDeISO(iso).getDay()]}. Escolha outro dia.` : "";
+
+  $("horarios").innerHTML = loja.config.horarios.map(h => {
+    const ok = iso && !fechado && horarioDisponivel(iso, h);
+    return `<label class="${ok ? "" : "indisponivel"}"><input type="radio" name="horario" value="${escaparHtml(h)}" ${ok ? "" : "disabled"} ${ok && h === marcado ? "checked" : ""}>${escaparHtml(h)}</label>`;
+  }).join("");
+}
+
+// ---------------- CEP (ViaCEP) ----------------
+let ultimoCep = "";
+async function buscarCep() {
+  const campo = $("fCep");
+  const digitos = campo.value.replace(/\D/g, "").slice(0, 8);
+  campo.value = digitos.length > 5 ? `${digitos.slice(0, 5)}-${digitos.slice(5)}` : digitos;
+  const caixa = campo.closest(".campo");
+  const msg = caixa.querySelector(".msg");
+  if (digitos.length < 8) { caixa.classList.remove("erro"); msg.textContent = "Digite o CEP que a gente completa o endereço"; ultimoCep = ""; return; }
+  if (digitos === ultimoCep) return;
+  ultimoCep = digitos;
+  msg.textContent = "Buscando endereço...";
+  try {
+    const r = await fetch(`https://viacep.com.br/ws/${digitos}/json/`);
+    const d = await r.json();
+    if (digitos !== ultimoCep) return; // usuário já mudou o CEP
+    if (d.erro) throw new Error("nao encontrado");
+    $("fRua").value = d.logradouro || "";
+    $("fBairro").value = d.bairro || "";
+    $("fCidade").value = d.localidade || "";
+    $("fUf").value = d.uf || "";
+    caixa.classList.remove("erro");
+    // CEP geral da cidade vem sem rua/bairro: deixa a pessoa preencher
+    msg.textContent = d.logradouro ? "Endereço encontrado ✓" : "CEP geral da cidade: preencha a rua e o bairro";
+    (d.logradouro ? $("fNumero") : $("fRua")).focus();
+    ["fRua", "fBairro", "fCidade", "fUf"].forEach(id => $(id).closest(".campo").classList.remove("erro"));
+  } catch (e) {
+    if (digitos !== ultimoCep) return;
+    caixa.classList.add("erro");
+    msg.textContent = "CEP não encontrado. Confira ou preencha o endereço à mão.";
+  }
+}
+
+// ---------------- validação e envio ----------------
+function marcarErro(id, texto) {
+  const caixa = $(id).closest(".campo");
+  caixa.classList.add("erro");
+  caixa.querySelector(".msg").textContent = texto;
+}
+function limparErros() {
+  document.querySelectorAll("#viewEntrega .campo.erro").forEach(c => {
+    c.classList.remove("erro");
+    if (c.querySelector("#fCep")) return;
+    const m = c.querySelector(".msg"); if (m) m.textContent = "";
+  });
+}
+
+function validar() {
+  limparErros();
+  const erros = [];
+  const obrig = { fNome: "Informe seu nome", fRua: "Informe a rua", fNumero: "Informe o número", fBairro: "Informe o bairro", fCidade: "Informe a cidade", fUf: "UF", fRef: "Ajude o entregador com um ponto de referência" };
+  for (const [id, texto] of Object.entries(obrig)) if (!$(id).value.trim()) { marcarErro(id, texto); erros.push(id); }
+  if ($("fTel").value.replace(/\D/g, "").length < 10) { marcarErro("fTel", "Telefone com DDD"); erros.push("fTel"); }
+  if ($("fCep").value.replace(/\D/g, "").length !== 8) { marcarErro("fCep", "CEP com 8 números"); erros.push("fCep"); }
+  const iso = $("fData").value;
+  if (!iso || iso < hojeISO()) { marcarErro("fData", "Escolha uma data a partir de hoje"); erros.push("fData"); }
+  else if (diaFechado(iso)) { marcarErro("fData", `Não entregamos ${DIAS[dataDeISO(iso).getDay()]}`); erros.push("fData"); }
+  const h = document.querySelector('input[name="horario"]:checked');
+  if (!h || !horarioDisponivel(iso, h.value)) { marcarErro("campoHorario", "Escolha um horário"); erros.push("campoHorario"); }
+  if (erros.length) {
+    const primeiro = $(erros[0]);
+    primeiro.scrollIntoView({ behavior: "smooth", block: "center" });
+    if (primeiro.focus) primeiro.focus({ preventScroll: true });
+  }
+  return erros.length === 0;
+}
+
+function trocoTxt(v) {
+  const n = Number(String(v).replace(/[^\d,.]/g, "").replace(/\.(?=\d{3})/g, "").replace(",", "."));
+  return Number.isFinite(n) && n > 0 ? real(n) : v;
+}
+
+function montarMensagem(pedido) {
+  const c = loja.config;
+  const linhas = pedido.itens.map(i => `• ${i.qtd}x ${i.nome} (${i.detalhe}) — ${real(i.preco * i.qtd)}`);
+  const e = pedido.entrega;
+  const dataTxt = `${DIAS[dataDeISO(e.data).getDay()]}, ${e.data.split("-").reverse().join("/")}`;
+  return [
+    `*Novo pedido - ${c.nome}*`,
+    ``,
+    `*Cliente:* ${pedido.cliente.nome}`,
+    `*Telefone:* ${pedido.cliente.telefone}`,
+    ``,
+    `*Itens:*`,
+    ...linhas,
+    ``,
+    pedido.taxa > 0 ? `Taxa de entrega: ${real(pedido.taxa)}` : null,
+    `*Total: ${real(pedido.total)}*`,
+    ``,
+    `*Entrega:* ${dataTxt}, das ${e.horario.replace(" - ", " às ")}`,
+    `*Endereço:* ${e.rua}, ${e.numero}${e.complemento ? " - " + e.complemento : ""} - ${e.bairro}, ${e.cidade}/${e.uf} - CEP ${e.cep}`,
+    `*Referência:* ${e.referencia}`,
+    ``,
+    `*Pagamento:* ${pedido.pagamento}${pedido.troco ? ` (troco para ${trocoTxt(pedido.troco)})` : ""}`,
+    pedido.obs ? `*Obs:* ${pedido.obs}` : null,
+  ].filter(l => l !== null).join("\n");
+}
+
+function enviarPedido() {
+  if (!validar()) return;
+  const t = totais();
+  if (!t.itens.length) { abrirPainel("itens"); return; }
+  const pedido = {
+    numero: Date.now().toString(36).toUpperCase(),
+    criadoEm: new Date().toISOString(),
+    cliente: { nome: $("fNome").value.trim(), telefone: $("fTel").value.trim() },
+    itens: t.itens.map(({ p, qtd }) => ({ id: p.id, nome: p.nome, detalhe: p.detalhe, preco: p.preco, qtd })),
+    taxa: t.taxa,
+    total: t.total,
+    entrega: {
+      data: $("fData").value,
+      horario: document.querySelector('input[name="horario"]:checked').value,
+      cep: $("fCep").value, rua: $("fRua").value.trim(), numero: $("fNumero").value.trim(),
+      complemento: $("fCompl").value.trim(), bairro: $("fBairro").value.trim(),
+      cidade: $("fCidade").value.trim(), uf: $("fUf").value.trim().toUpperCase(), referencia: $("fRef").value.trim(),
+    },
+    pagamento: $("fPagamento").value,
+    troco: $("fPagamento").value === "Dinheiro" ? $("fTroco").value.trim() : "",
+    obs: $("fObs").value.trim(),
+  };
+  const texto = montarMensagem(pedido);
+
+  try {
+    const pedidos = JSON.parse(localStorage.getItem(CHAVE_PEDIDOS) || "[]");
+    pedidos.push(pedido);
+    localStorage.setItem(CHAVE_PEDIDOS, JSON.stringify(pedidos));
+  } catch (e) {}
+
+  const numero = String(loja.config.whatsapp || "").replace(/\D/g, "");
+  if (numero) {
+    const destino = numero.startsWith("55") ? numero : "55" + numero;
+    window.open(`https://wa.me/${destino}?text=${encodeURIComponent(texto)}`, "_blank");
+  }
+
+  carrinho = {};
+  gravarCarrinho();
+  passo = "ok";
+  $("viewOk").innerHTML = `
+    <div class="confirmado">
+      <div class="grande">🐾</div>
+      <h3>Pedido montado!</h3>
+      <p>${numero
+        ? "Abrimos o WhatsApp da loja com o pedido pronto. É só tocar em <b>enviar</b> lá."
+        : "O WhatsApp da loja ainda não foi cadastrado. Este é o resumo do pedido:"}</p>
+      <div class="resumo-pedido">${escaparHtml(texto)}</div>
+    </div>`;
+  montarPainel();
+  atualizarTudo();
+}
+
+// ---------------- avisos ----------------
+let timerAviso;
+function avisar(texto) {
+  const el = $("aviso");
+  el.textContent = texto;
+  el.classList.add("mostrar");
+  clearTimeout(timerAviso);
+  timerAviso = setTimeout(() => el.classList.remove("mostrar"), 1600);
+}
+
+function atualizarTudo() {
+  montarGrade();
+  atualizarBarra();
+  if (painelAberto() && passo === "itens") montarPainel();
+}
+
+// ---------------- eventos ----------------
+document.addEventListener("click", ev => {
+  const mais = ev.target.closest("[data-mais]");
+  const menos = ev.target.closest("[data-menos]");
+  const chip = ev.target.closest("[data-cat]");
+  if (mais) mudarQtd(mais.dataset.mais, +1);
+  else if (menos) mudarQtd(menos.dataset.menos, -1);
+  else if (chip) { categoriaAtiva = chip.dataset.cat; montarChips(); montarGrade(); }
+  else if (ev.target.closest("#btnIrEntrega")) { passo = "entrega"; montarPainel(); $("viewEntrega").scrollTop = 0; }
+  else if (ev.target.closest("#btnContinuar")) fecharPainel();
+  else if (ev.target.closest("#btnEnviar")) enviarPedido();
+});
+$("btnCarrinhoTopo").onclick = () => abrirPainel("itens");
+$("btnBarra").onclick = () => abrirPainel("itens");
+$("btnFechar").onclick = fecharPainel;
+$("fundo").onclick = fecharPainel;
+$("btnVoltar").onclick = () => { passo = "itens"; montarPainel(); };
+document.addEventListener("keydown", ev => { if (ev.key === "Escape" && painelAberto()) fecharPainel(); });
+$("busca").addEventListener("input", ev => { termoBusca = ev.target.value; montarGrade(); });
+$("fCep").addEventListener("input", buscarCep);
+$("fData").addEventListener("change", montarHorarios);
+$("horarios").addEventListener("change", () => $("campoHorario").classList.remove("erro"));
+$("fPagamento").addEventListener("change", ev => $("campoTroco").classList.toggle("oculto", ev.target.value !== "Dinheiro"));
+$("viewEntrega").addEventListener("submit", ev => { ev.preventDefault(); enviarPedido(); });
+$("viewEntrega").addEventListener("input", ev => {
+  const c = ev.target.closest(".campo");
+  if (c && c.classList.contains("erro") && ev.target.id !== "fCep") { c.classList.remove("erro"); c.querySelector(".msg").textContent = ""; }
+});
+// se o painel da loja mudar os produtos em outra aba, a vitrine acompanha
+window.addEventListener("storage", ev => { if (ev.key === CHAVE_LOJA) location.reload(); });
+
+// ---------------- início ----------------
+montarTopo();
+montarChips();
+atualizarTudo();
