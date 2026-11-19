@@ -58,6 +58,7 @@
 
     <!-- passo 2: entrega -->
     <form class="corpo oculto" id="viewEntrega" novalidate>
+      <p class="nota-obrig">Campos com <span>*</span> são obrigatórios</p>
       <div class="secao-form">
         <h3>Seus dados</h3>
         <div class="campo"><label for="fNome">Nome</label><input id="fNome" autocomplete="name" required><span class="msg"></span></div>
@@ -67,7 +68,7 @@
       <div class="secao-form">
         <h3>Quando entregar</h3>
         <div class="campo"><label for="fData">Data da entrega</label><input id="fData" type="date" required><span class="msg"></span></div>
-        <div class="campo" id="campoHorario"><label>Horário</label><div class="horarios" id="horarios"></div><span class="msg"></span></div>
+        <div class="campo obrig" id="campoHorario"><label>Horário</label><div class="horarios" id="horarios"></div><span class="msg"></span></div>
       </div>
 
       <div class="secao-form">

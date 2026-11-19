@@ -197,6 +197,12 @@ img { max-width: 100%; display: block; }
 .horarios label.indisponivel { opacity: .4; cursor: not-allowed; text-decoration: line-through; }
 
 /* ---------- confirmação ---------- */
+/* campos obrigatórios: asterisco vermelho no rótulo */
+.campo:has(> input[required]) > label::after,
+.campo.obrig > label::after { content: " *"; color: var(--erro); font-weight: 700; }
+.nota-obrig { margin: 0 0 10px; font-size: 13px; color: var(--texto-suave); }
+.nota-obrig span { color: var(--erro); font-weight: 700; }
+
 .confirmado { text-align: center; padding: 24px 8px; }
 .confirmado .grande { font-size: 56px; }
 .resumo-pedido { white-space: pre-wrap; text-align: left; background: #fff; border-radius: 12px; padding: 12px; font-size: 13px; margin-top: 12px; }

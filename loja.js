@@ -411,6 +411,14 @@ document.addEventListener("click", ev => {
   else if (ev.target.closest("#btnContinuar")) fecharPainel();
   else if (ev.target.closest("#btnEnviar")) enviarPedido();
 });
+// telefone vai sendo formatado: (54) 99999-9999
+$("fTel").addEventListener("input", ev => {
+  const d = ev.target.value.replace(/\D/g, "").slice(0, 11);
+  let t = d;
+  if (d.length > 2) t = `(${d.slice(0, 2)}) ${d.slice(2)}`;
+  if (d.length > 6) t = `(${d.slice(0, 2)}) ${d.slice(2, d.length - 4)}-${d.slice(-4)}`;
+  ev.target.value = t;
+});
 $("btnCarrinhoTopo").onclick = () => abrirPainel("itens");
 $("btnBarra").onclick = () => abrirPainel("itens");
 $("btnFechar").onclick = fecharPainel;
