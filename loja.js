@@ -1,10 +1,12 @@
 // Loja (tela do cliente): catálogo, carrinho, entrega e envio do pedido.
 
-const CHAVE_CARRINHO = "agropet_carrinho_v1";
-const CHAVE_PEDIDOS = "agropet_pedidos_v1";
+const SLUG = slugAtual();
+const CHAVE_CARRINHO = "agropet_carrinho_" + SLUG; // cada loja tem o seu carrinho
 const ANTECEDENCIA_MIN = 60; // minutos de folga pra um horário de hoje ainda valer
 
-const loja = carregarLoja();
+// começa com a cópia guardada (abre na hora, até sem internet) e depois atualiza pelo banco
+let loja = vitrineEmCache(SLUG) || { id: null, slug: SLUG, config: { ...copia(CONFIG_PADRAO), nome: "" }, produtos: [] };
+let estadoCarga = loja.id ? "ok" : "carregando"; // carregando | ok | sem-loja | erro
 let carrinho = lerCarrinho();      // { idProduto: quantidade }
 let categoriaAtiva = "Todos";
 let termoBusca = "";
@@ -47,7 +49,7 @@ function mudarQtd(id, delta) {
 function montarTopo() {
   const c = loja.config;
   aplicarTema(c.corPrincipal);
-  document.title = `${c.nome} - Pedidos`;
+  document.title = c.nome ? `${c.nome} - Pedidos` : "Carregando...";
   $("nomeLoja").textContent = c.nome;
   $("logoLoja").innerHTML = c.logo ? `<img class="logo" src="${escaparHtml(c.logo)}" alt="">` : "🐾";
   $("busca").placeholder = c.textoBusca || "Buscar produto";
@@ -56,7 +58,10 @@ function montarTopo() {
 
 // ---------------- carrossel de banners ----------------
 let slideAtual = 0, timerSlide = null;
-function bannersAtivos() { return (loja.config.banners || []).filter(b => b.ativo !== false); }
+function bannersAtivos() {
+  if (estadoCarga !== "ok") return []; // não mostra banner de exemplo enquanto a loja carrega
+  return (loja.config.banners || []).filter(b => b.ativo !== false);
+}
 
 function montarCarrossel() {
   const lista = bannersAtivos();
@@ -108,7 +113,12 @@ function montarGrade() {
     return true;
   });
   if (!lista.length) {
-    $("grade").innerHTML = `<div class="vazio">Nenhum produto encontrado.</div>`;
+    const msg = {
+      carregando: "Carregando produtos...",
+      "sem-loja": "Essa loja não foi encontrada ou está fora do ar no momento.",
+      erro: "Não deu pra carregar a loja. Confira a internet e abra de novo.",
+    }[estadoCarga] || "Nenhum produto encontrado.";
+    $("grade").innerHTML = `<div class="vazio">${msg}</div>`;
     return;
   }
   $("grade").innerHTML = lista.map(p => {
@@ -375,17 +385,19 @@ function enviarPedido() {
   };
   const texto = montarMensagem(pedido);
 
-  try {
-    const pedidos = JSON.parse(localStorage.getItem(CHAVE_PEDIDOS) || "[]");
-    pedidos.push(pedido);
-    localStorage.setItem(CHAVE_PEDIDOS, JSON.stringify(pedidos));
-  } catch (e) {}
-
+  // abre o WhatsApp primeiro (o navegador só deixa abrir janela direto do toque no botão)
   const numero = String(loja.config.whatsapp || "").replace(/\D/g, "");
   if (numero) {
     const destino = numero.startsWith("55") ? numero : "55" + numero;
     window.open(`https://wa.me/${destino}?text=${encodeURIComponent(texto)}`, "_blank");
   }
+
+  // e guarda o pedido no banco, pra loja ver no painel
+  db.from("pedidos").insert({
+    loja_id: loja.id, numero: pedido.numero, cliente: pedido.cliente, itens: pedido.itens,
+    taxa: pedido.taxa, total: pedido.total, entrega: pedido.entrega,
+    pagamento: pedido.pagamento, troco: pedido.troco, obs: pedido.obs,
+  }).then(({ error }) => { if (error) console.warn("Pedido não foi guardado no banco:", error.message); });
 
   carrinho = {};
   gravarCarrinho();
@@ -466,10 +478,24 @@ $("viewEntrega").addEventListener("input", ev => {
   const c = ev.target.closest(".campo");
   if (c && c.classList.contains("erro") && ev.target.id !== "fCep") { c.classList.remove("erro"); c.querySelector(".msg").textContent = ""; }
 });
-// se o painel da loja mudar os produtos em outra aba, a vitrine acompanha
-window.addEventListener("storage", ev => { if (ev.key === CHAVE_LOJA) location.reload(); });
-
 // ---------------- início ----------------
-montarTopo();
-montarChips();
-atualizarTudo();
+function montarTudo() {
+  montarTopo();
+  montarChips();
+  atualizarTudo();
+}
+async function carregarDoBanco() {
+  try {
+    const v = await buscarVitrine(SLUG);
+    if (v) { loja = v; estadoCarga = "ok"; }
+    else { estadoCarga = "sem-loja"; loja.produtos = []; }
+  } catch (e) {
+    console.warn("Não deu pra buscar a loja:", e.message || e);
+    if (estadoCarga !== "ok") estadoCarga = "erro"; // sem internet e sem cópia guardada
+  }
+  montarTudo();
+}
+montarTudo();
+carregarDoBanco();
+// voltou pro app depois de um tempo? busca preços/banners atualizados
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") carregarDoBanco(); });

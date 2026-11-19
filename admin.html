@@ -64,25 +64,130 @@
     .botoes > * { flex: 1; }
     .btn-perigo { border: 1px solid var(--erro); color: var(--erro); background: #fff; border-radius: 12px; padding: 12px; font-weight: 600; }
     .chk { display: flex; align-items: center; gap: 8px; font-weight: 600; margin-bottom: 10px; }
+    .btn-sair { border: 0; background: rgba(255,255,255,.15); color: #fff; border-radius: 999px; padding: 8px 14px; font-weight: 600; }
+    /* login */
+    .cartao-login { max-width: 400px; margin: 32px auto; background: #fff; border-radius: 16px; padding: 24px 20px; box-shadow: var(--sombra); }
+    .cartao-login h2 { margin: 4px 0 4px; text-align: center; }
+    .cartao-login > p { text-align: center; }
+    .logo-login { width: 64px; height: 64px; border-radius: 16px; background: var(--verde-claro); display: grid; place-items: center; font-size: 32px; margin: 0 auto; }
+    .msg-login { font-size: 14px; margin: 0 0 10px; min-height: 0; }
+    .msg-login.erro { color: var(--erro); }
+    .msg-login.ok { color: var(--verde-escuro); background: var(--verde-claro); padding: 10px 12px; border-radius: 10px; }
+    .links-login { display: flex; justify-content: space-between; margin-top: 14px; }
+    .links-login button { border: 0; background: none; color: var(--verde-escuro); font-weight: 600; text-decoration: underline; padding: 4px 0; }
+    /* barra da loja em edição */
+    .barra-loja { display: flex; align-items: center; gap: 8px; margin: 16px 0 0; flex-wrap: wrap; }
+    .barra-loja select { flex: 1; min-width: 180px; border: 1px solid var(--borda); border-radius: 10px; padding: 9px 10px; background: #fff; font-weight: 600; }
+    .nome-loja-fixo { font-weight: 700; }
+    .abas { flex-wrap: wrap; }
+    .contador { background: var(--laranja); color: #fff; border-radius: 999px; font-size: 12px; padding: 0 7px; margin-left: 4px; }
+    /* pedidos */
+    .pedido { background: #fff; border-radius: 12px; box-shadow: var(--sombra); padding: 12px 14px; display: flex; flex-direction: column; gap: 6px; }
+    .pedido .cab { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+    .pedido .cab b { font-size: 16px; }
+    .pedido .det { font-size: 14px; color: var(--texto-suave); }
+    .pedido .itens { font-size: 14px; margin: 0; padding-left: 18px; }
+    .pedido .rodape { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .pedido select { border: 1px solid var(--borda); border-radius: 8px; padding: 6px 8px; background: #fff; font-weight: 600; }
+    .status { font-size: 12px; font-weight: 700; border-radius: 999px; padding: 2px 9px; }
+    .status.novo { background: var(--laranja); color: #fff; }
+    .status.confirmado { background: #1f5f8b; color: #fff; }
+    .status.entregue { background: var(--verde-claro); color: var(--verde-escuro); }
+    .status.cancelado { background: #eee; color: #777; }
+    .pedido a { color: var(--verde-escuro); font-weight: 600; }
+    /* lojas (master) */
+    .loja-card { background: #fff; border-radius: 12px; box-shadow: var(--sombra); padding: 12px 14px; }
+    .loja-card .cab { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+    .loja-card .link { font-size: 13px; word-break: break-all; color: var(--texto-suave); }
+    .loja-card .pessoas { margin: 10px 0 0; padding: 0; list-style: none; font-size: 14px; display: flex; flex-direction: column; gap: 4px; }
+    .loja-card .pessoas li { display: flex; justify-content: space-between; align-items: center; gap: 6px; }
+    .loja-card .pessoas button { border: 0; background: none; color: var(--erro); font-size: 13px; }
+    .pendente { font-size: 12px; color: var(--laranja); font-weight: 600; }
+    .linha-convite { display: flex; gap: 6px; margin-top: 8px; }
+    .linha-convite input { flex: 1; min-width: 0; border: 1px solid var(--borda); border-radius: 10px; padding: 8px 10px; }
+    .linha-convite button { white-space: nowrap; padding: 8px 12px; }
+    .chave { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; }
+    /* tela de "salvando" */
+    .carregando { position: fixed; inset: 0; z-index: 80; background: rgba(247,245,240,.75); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; font-weight: 600; }
+    .girando { width: 36px; height: 36px; border-radius: 50%; border: 4px solid var(--verde-claro); border-top-color: var(--verde); animation: gira .8s linear infinite; }
+    @keyframes gira { to { transform: rotate(360deg); } }
   </style>
 </head>
 <body>
   <div class="topo">
     <div class="marca"><span>⚙️</span><span>Painel da loja</span></div>
     <button class="btn-instalar oculto" id="btnInstalar">📲 Instalar</button>
-    <a href="index.html">Ver loja</a>
+    <a href="index.html" id="linkVerLoja" class="oculto" target="_blank" rel="noopener">Ver loja</a>
+    <button class="btn-sair oculto" id="btnSair">Sair</button>
   </div>
 
   <main class="conteudo" style="max-width:760px">
-    <div class="aviso-demo">
-      <b>Versão de teste:</b> o que você salvar aqui fica só neste navegador. Para os clientes verem, os produtos ainda precisam ser ligados a um lugar central.
+
+    <!-- ===== login ===== -->
+    <section id="telaLogin" class="cartao-login oculto">
+      <div class="logo-login">🐾</div>
+      <h2 id="loginTitulo">Entrar no painel</h2>
+      <p class="ajuda" id="loginAjuda">Use o e-mail e a senha da sua conta.</p>
+      <form id="formLogin" novalidate>
+        <div class="campo" id="campoEmail"><label for="lEmail">E-mail</label><input id="lEmail" type="email" autocomplete="username" inputmode="email"><span class="msg"></span></div>
+        <div class="campo" id="campoSenha"><label for="lSenha">Senha</label><input id="lSenha" type="password" autocomplete="current-password"><span class="msg"></span></div>
+        <div class="campo oculto" id="campoSenha2"><label for="lSenha2">Repita a senha</label><input id="lSenha2" type="password" autocomplete="new-password"><span class="msg"></span></div>
+        <div class="msg-login" id="msgLogin"></div>
+        <button class="btn-principal" id="btnLogin" type="submit" style="width:100%">Entrar</button>
+      </form>
+      <div class="links-login" id="linksLogin">
+        <button type="button" data-modo="cadastro">Criar conta</button>
+        <button type="button" data-modo="esqueci">Esqueci a senha</button>
+      </div>
+    </section>
+
+    <!-- conta sem loja (convite ainda não feito / e-mail não confirmado) -->
+    <section id="telaSemAcesso" class="cartao-login oculto">
+      <div class="logo-login">🔒</div>
+      <h2>Conta ainda sem loja</h2>
+      <p id="semAcessoTexto"></p>
+      <button class="btn-secundario" id="btnTentarDeNovo" style="width:100%">Já liberaram, tentar de novo</button>
+    </section>
+
+    <div id="areaPainel" class="oculto">
+    <div class="barra-loja" id="barraLoja">
+      <span class="ajuda" style="margin:0">Editando:</span>
+      <select id="seletorLoja"></select>
+      <span id="nomeLojaFixo" class="nome-loja-fixo"></span>
     </div>
 
     <div class="abas">
       <button class="chip ativo" data-aba="produtos">Produtos</button>
+      <button class="chip" data-aba="pedidos">Pedidos <span class="contador oculto" id="contPedidos"></span></button>
       <button class="chip" data-aba="capa">Capa da loja</button>
       <button class="chip" data-aba="entrega">Entrega</button>
+      <button class="chip oculto" data-aba="lojas" id="abaLojasBtn">⭐ Lojas</button>
     </div>
+
+    <!-- ===== pedidos ===== -->
+    <section id="abaPedidos" class="oculto">
+      <div class="linha" style="align-items:center;margin-bottom:12px">
+        <select id="filtroStatus" style="flex:1;border:1px solid var(--borda);border-radius:10px;padding:10px;background:#fff">
+          <option value="abertos">Novos e confirmados</option>
+          <option value="todos">Todos</option>
+          <option value="entregue">Entregues</option>
+          <option value="cancelado">Cancelados</option>
+        </select>
+        <button class="btn-secundario" id="btnAtualizarPedidos" style="padding:10px 14px">↻ Atualizar</button>
+      </div>
+      <div id="listaPedidos" class="lista-adm"></div>
+    </section>
+
+    <!-- ===== lojas (só master) ===== -->
+    <section id="abaLojas" class="oculto">
+      <div class="secao-form">
+        <h3>Nova loja</h3>
+        <div class="campo"><label for="nlNome">Nome da loja</label><input id="nlNome" placeholder="Ex: Agro Pet Canela"></div>
+        <div class="campo"><label for="nlSlug">Endereço da loja</label><input id="nlSlug" placeholder="agro-pet-canela"><span class="msg" id="nlLink">Só letras minúsculas, números e hífen</span></div>
+        <button class="btn-principal" id="btnCriarLoja" style="width:100%">Criar loja</button>
+      </div>
+      <div id="listaLojas" class="lista-adm"></div>
+    </section>
 
     <!-- ===== produtos ===== -->
     <section id="abaProdutos">
@@ -141,7 +246,10 @@
       </div>
       <button class="btn-principal" id="btnSalvarLoja" style="width:100%">Salvar</button>
     </section>
+    </div><!-- /areaPainel -->
   </main>
+
+  <div class="carregando oculto" id="carregando"><div class="girando"></div><span id="carregandoTexto">Salvando...</span></div>
 
   <!-- editor de produto -->
   <div class="fundo-escuro oculto" id="fundo"></div>
@@ -246,6 +354,7 @@
 
   <div class="aviso" id="aviso"></div>
 
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/dist/umd/supabase.min.js"></script>
   <script src="dados.js"></script>
   <script src="admin.js"></script>
   <script src="pwa.js"></script>
