@@ -46,31 +46,51 @@ function mudarQtd(id, delta) {
 // ---------------- topo e banner ----------------
 function montarTopo() {
   const c = loja.config;
+  aplicarTema(c.corPrincipal);
   document.title = `${c.nome} - Pedidos`;
   $("nomeLoja").textContent = c.nome;
-  $("bannerTitulo").textContent = c.bannerTitulo || c.nome;
-  $("bannerSub").textContent = c.bannerSub || "";
-  const caixa = $("banner");
-  caixa.querySelector("img")?.remove();
-  if (c.bannerImg) {
-    const img = document.createElement("img");
-    img.src = c.bannerImg;
-    img.alt = "";
-    caixa.prepend(img);
-    caixa.classList.toggle("com-imagem", c.bannerComTexto !== false);
-  } else {
-    caixa.classList.remove("com-imagem");
-  }
-  const semTexto = !!c.bannerImg && c.bannerComTexto === false;
-  caixa.querySelector(".textos").classList.toggle("oculto", semTexto);
-  caixa.querySelector(".patinhas").classList.toggle("oculto", !!c.bannerImg);
-  caixa.style.minHeight = semTexto ? "0" : "";
-  caixa.style.aspectRatio = semTexto ? "16 / 5" : "";
+  $("logoLoja").innerHTML = c.logo ? `<img class="logo" src="${escaparHtml(c.logo)}" alt="">` : "🐾";
+  $("busca").placeholder = c.textoBusca || "Buscar produto";
+  montarCarrossel();
 }
+
+// ---------------- carrossel de banners ----------------
+let slideAtual = 0, timerSlide = null;
+function bannersAtivos() { return (loja.config.banners || []).filter(b => b.ativo !== false); }
+
+function montarCarrossel() {
+  const lista = bannersAtivos();
+  $("secaoBanner").classList.toggle("oculto", lista.length === 0);
+  $("carrossel").dataset.altura = loja.config.alturaBanner || "media";
+  $("slides").innerHTML = lista.map(htmlBanner).join("");
+  $("pontos").innerHTML = lista.length > 1
+    ? lista.map((_, i) => `<button data-slide="${i}" aria-label="Banner ${i + 1}"></button>`).join("") : "";
+  irParaSlide(0);
+}
+function irParaSlide(i) {
+  const n = bannersAtivos().length;
+  if (!n) return;
+  slideAtual = (i + n) % n;
+  $("slides").style.transform = `translateX(-${slideAtual * 100}%)`;
+  document.querySelectorAll("#pontos button").forEach((b, j) => b.classList.toggle("ativo", j === slideAtual));
+  clearTimeout(timerSlide);
+  const seg = Number(loja.config.trocaBanner);
+  if (n > 1 && seg > 0) timerSlide = setTimeout(() => irParaSlide(slideAtual + 1), seg * 1000);
+}
+// arrastar o dedo troca o banner
+let toqueX = null;
+$("carrossel").addEventListener("pointerdown", ev => { toqueX = ev.clientX; });
+$("carrossel").addEventListener("pointerup", ev => {
+  if (toqueX == null) return;
+  const dx = ev.clientX - toqueX;
+  toqueX = null;
+  if (Math.abs(dx) > 40) irParaSlide(slideAtual + (dx < 0 ? 1 : -1));
+});
 
 // ---------------- catálogo ----------------
 function montarChips() {
-  const cats = ["Todos", "Promoções", ...new Set(loja.produtos.filter(p => p.ativo).map(p => p.categoria))];
+  const cats = ["Todos", ...(loja.config.mostrarPromocoes !== false ? ["Promoções"] : []),
+    ...new Set(loja.produtos.filter(p => p.ativo).map(p => p.categoria))];
   $("chips").innerHTML = cats.map(c =>
     `<button class="chip ${c === categoriaAtiva ? "ativo" : ""}" data-cat="${escaparHtml(c)}">${c === "Promoções" ? "🔥 " : ""}${escaparHtml(c)}</button>`
   ).join("");
@@ -404,6 +424,17 @@ document.addEventListener("click", ev => {
   const mais = ev.target.closest("[data-mais]");
   const menos = ev.target.closest("[data-menos]");
   const chip = ev.target.closest("[data-cat]");
+  const botaoBanner = ev.target.closest("[data-banner-cat]");
+  const ponto = ev.target.closest("[data-slide]");
+  if (botaoBanner) {
+    // botão do banner leva pra uma categoria (ou promoções) da vitrine
+    const cat = botaoBanner.dataset.bannerCat;
+    categoriaAtiva = document.querySelector(`#chips [data-cat="${CSS.escape(cat)}"]`) ? cat : "Todos";
+    montarChips(); montarGrade();
+    $("chips").scrollIntoView({ behavior: "smooth", block: "start" });
+    return;
+  }
+  if (ponto) { irParaSlide(Number(ponto.dataset.slide)); return; }
   if (mais) mudarQtd(mais.dataset.mais, +1);
   else if (menos) mudarQtd(menos.dataset.menos, -1);
   else if (chip) { categoriaAtiva = chip.dataset.cat; montarChips(); montarGrade(); }

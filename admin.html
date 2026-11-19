@@ -26,8 +26,33 @@
     .linha-adm .sub { color: var(--texto-suave); font-size: 13px; }
     .linha-adm .valor { text-align: right; white-space: nowrap; }
     .linha-adm button { flex-shrink: 0; }
-    .previa-banner { border-radius: 12px; overflow: hidden; background: var(--verde-claro); aspect-ratio: 16/5; display: grid; place-items: center; color: var(--texto-suave); margin-bottom: 8px; }
-    .previa-banner img { width: 100%; height: 100%; object-fit: cover; }
+    .ajuda { font-size: 13px; color: var(--texto-suave); margin: -4px 0 10px; }
+    .mini-banner { width: 96px; flex-shrink: 0; border-radius: 8px; overflow: hidden; aspect-ratio: 16/7; pointer-events: none; }
+    .mini-banner .carrossel { min-height: 0; aspect-ratio: auto; height: 100%; border-radius: 0; }
+    .mini-banner .slide { padding: 4px 6px; }
+    .mini-banner .slide h2 { font-size: 8px !important; }
+    .mini-banner .slide p, .mini-banner .slide .btn-banner { display: none; }
+    .ordem { display: flex; flex-direction: column; gap: 2px; }
+    .ordem button { border: 1px solid var(--borda); background: #fff; border-radius: 6px; width: 30px; height: 24px; font-size: 12px; line-height: 1; }
+    .ordem button:disabled { opacity: .3; }
+    /* a prévia do editor sempre mostra o formato de celular */
+    .previa-fixa .carrossel[data-altura="baixa"] { aspect-ratio: 3 / 1; }
+    .previa-fixa .carrossel[data-altura="media"] { aspect-ratio: 16 / 7; }
+    .previa-fixa .carrossel[data-altura="alta"] { aspect-ratio: 16 / 9; }
+    .previa-fixa { padding: 12px 16px 10px; background: #fff; border-bottom: 1px solid var(--borda); }
+    .previa-logo { width: 72px; height: 72px; border-radius: 12px; background: var(--verde); display: grid; place-items: center; font-size: 32px; overflow: hidden; }
+    .previa-logo img { width: 100%; height: 100%; object-fit: contain; background: #fff; }
+    .cores { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    .cores button { width: 34px; height: 34px; border-radius: 50%; border: 3px solid #fff; box-shadow: 0 0 0 1px var(--borda); }
+    .cores button.ativo { box-shadow: 0 0 0 2px var(--texto); }
+    .cores input[type=color] { width: 44px; height: 36px; border: 1px solid var(--borda); border-radius: 8px; padding: 2px; background: #fff; cursor: pointer; }
+    .segmentos { display: flex; border: 1px solid var(--borda); border-radius: 10px; overflow: hidden; background: #fff; }
+    .segmentos button { flex: 1; border: 0; background: transparent; padding: 9px 6px; font-size: 14px; }
+    .segmentos button + button { border-left: 1px solid var(--borda); }
+    .segmentos button.ativo { background: var(--verde); color: #fff; font-weight: 600; }
+    .grade-posicao { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; aspect-ratio: 16/7; max-width: 340px; margin: 0 auto; padding: 6px; border-radius: 10px; background: var(--verde-claro); }
+    .grade-posicao button { border: 1px dashed var(--borda); background: rgba(255,255,255,.7); border-radius: 8px; font-size: 12px; color: var(--texto-suave); }
+    .grade-posicao button.ativo { background: var(--verde); color: #fff; border: 0; font-weight: 700; }
     .previa-foto { width: 96px; height: 96px; border-radius: 12px; background: var(--verde-claro); display: grid; place-items: center; font-size: 40px; overflow: hidden; }
     .previa-foto img { width: 100%; height: 100%; object-fit: cover; }
     .dias { display: flex; flex-wrap: wrap; gap: 6px; }
@@ -55,7 +80,8 @@
 
     <div class="abas">
       <button class="chip ativo" data-aba="produtos">Produtos</button>
-      <button class="chip" data-aba="loja">Banner e entrega</button>
+      <button class="chip" data-aba="capa">Capa da loja</button>
+      <button class="chip" data-aba="entrega">Entrega</button>
     </div>
 
     <!-- ===== produtos ===== -->
@@ -67,21 +93,45 @@
       <div class="lista-adm" id="listaAdm"></div>
     </section>
 
-    <!-- ===== loja ===== -->
-    <section id="abaLoja" class="oculto">
+    <!-- ===== capa ===== -->
+    <section id="abaCapa" class="oculto">
       <div class="secao-form">
-        <h3>Banner da empresa</h3>
-        <div class="previa-banner" id="previaBanner">Sem imagem (usa o fundo verde)</div>
-        <div class="botoes" style="margin-bottom:10px">
-          <label class="btn-secundario" style="text-align:center;cursor:pointer">Escolher imagem<input type="file" id="arqBanner" accept="image/*" hidden></label>
-          <button class="btn-perigo" id="btnTirarBanner" type="button">Tirar imagem</button>
+        <h3>Banners da capa</h3>
+        <p class="ajuda">Os banners passam um depois do outro no topo da loja. Toque em <b>Editar</b> para mudar imagem, textos, cores e a posição das palavras.</p>
+        <div class="lista-adm" id="listaBanners"></div>
+        <button class="btn-principal" id="btnNovoBanner" style="width:100%;margin-top:10px">+ Novo banner</button>
+        <div class="linha" style="margin-top:12px">
+          <div class="campo"><label for="cAltura">Altura dos banners</label>
+            <select id="cAltura"><option value="baixa">Baixa (faixa)</option><option value="media">Média</option><option value="alta">Alta</option></select></div>
+          <div class="campo"><label for="cTroca">Trocar de banner a cada</label>
+            <select id="cTroca"><option value="3">3 segundos</option><option value="5">5 segundos</option><option value="8">8 segundos</option><option value="0">Não trocar sozinho</option></select></div>
         </div>
-        <label class="chk"><input type="checkbox" id="cComTexto"> Escrever as frases por cima da imagem</label>
-        <div class="campo"><label for="cNome">Nome da loja</label><input id="cNome"></div>
-        <div class="campo"><label for="cTitulo">Frase principal do banner</label><input id="cTitulo"></div>
-        <div class="campo"><label for="cSub">Frase menor</label><input id="cSub"></div>
       </div>
 
+      <div class="secao-form">
+        <h3>Identidade da loja</h3>
+        <div style="display:flex;gap:12px;align-items:center;margin-bottom:10px">
+          <div class="previa-logo" id="previaLogo"></div>
+          <div style="display:flex;flex-direction:column;gap:6px">
+            <label class="btn-secundario" style="cursor:pointer;text-align:center">Escolher logo<input type="file" id="arqLogo" accept="image/*" hidden></label>
+            <button type="button" class="btn-icone" id="btnTirarLogo" style="font-size:13px">Tirar logo</button>
+          </div>
+        </div>
+        <div class="campo"><label for="cNome">Nome da loja</label><input id="cNome"></div>
+        <div class="campo"><label>Cor da loja (topo, botões e destaques)</label>
+          <div class="cores" id="cores"></div></div>
+      </div>
+
+      <div class="secao-form">
+        <h3>Vitrine</h3>
+        <label class="chk"><input type="checkbox" id="cPromo"> Mostrar o filtro "🔥 Promoções"</label>
+        <div class="campo"><label for="cBusca">Frase da caixa de busca</label><input id="cBusca"></div>
+      </div>
+      <button class="btn-principal" id="btnSalvarCapa" style="width:100%">Salvar identidade e vitrine</button>
+    </section>
+
+    <!-- ===== entrega ===== -->
+    <section id="abaEntrega" class="oculto">
       <div class="secao-form">
         <h3>Pedidos e entrega</h3>
         <div class="campo"><label for="cWhats">WhatsApp que recebe os pedidos (com DDD)</label><input id="cWhats" inputmode="tel" placeholder="54 99999-9999"><span class="msg">O pedido chega pronto nesse número</span></div>
@@ -128,6 +178,69 @@
     <footer>
       <button class="btn-principal" id="btnSalvarProduto">Salvar produto</button>
       <button class="btn-perigo" id="btnExcluir">Excluir produto</button>
+    </footer>
+  </aside>
+
+  <!-- editor de banner -->
+  <aside class="painel oculto" id="painelBanner" role="dialog" aria-modal="true">
+    <header>
+      <h2>Editar banner</h2>
+      <button class="btn-icone" id="btnFecharBanner" aria-label="Fechar">✕</button>
+    </header>
+    <div class="previa-fixa">
+      <div class="carrossel" id="previaCarrossel"><div class="slides" id="previaSlide"></div></div>
+      <div class="ajuda" style="margin:6px 0 0">Prévia de como fica no celular</div>
+    </div>
+    <form class="corpo" id="formBanner" novalidate>
+      <div class="secao-form">
+        <h3>Imagem</h3>
+        <div class="botoes" style="margin-bottom:10px">
+          <label class="btn-secundario" style="text-align:center;cursor:pointer">Escolher imagem<input type="file" id="arqBanner" accept="image/*" hidden></label>
+          <button class="btn-perigo" id="btnTirarImg" type="button">Tirar imagem</button>
+        </div>
+        <div id="opcoesImg">
+          <div class="campo"><label>Parte da imagem que aparece</label>
+            <div class="segmentos" data-campo="enquadramento">
+              <button type="button" data-valor="top">Cima</button><button type="button" data-valor="center">Meio</button><button type="button" data-valor="bottom">Baixo</button>
+            </div></div>
+          <label class="chk"><input type="checkbox" id="bEscurecer"> Escurecer a imagem pra destacar o texto</label>
+        </div>
+        <div class="campo" id="campoCorFundo"><label>Cor de fundo (quando não tem imagem)</label><div class="cores" id="coresFundo"></div></div>
+      </div>
+
+      <div class="secao-form">
+        <h3>Textos</h3>
+        <p class="ajuda">Deixe em branco se a imagem já tiver o texto escrito.</p>
+        <div class="campo"><label for="bTitulo">Título</label><input id="bTitulo" maxlength="60"></div>
+        <div class="campo"><label for="bSub">Frase menor</label><input id="bSub" maxlength="100"></div>
+        <div class="campo"><label>Tamanho do título</label>
+          <div class="segmentos" data-campo="tamanho">
+            <button type="button" data-valor="p">Pequeno</button><button type="button" data-valor="m">Médio</button><button type="button" data-valor="g">Grande</button>
+          </div></div>
+        <div class="campo"><label>Cor das letras</label>
+          <div class="segmentos" data-campo="corTexto">
+            <button type="button" data-valor="claro">Brancas</button><button type="button" data-valor="escuro">Escuras</button>
+          </div></div>
+      </div>
+
+      <div class="secao-form">
+        <h3>Onde ficam as palavras</h3>
+        <div class="grade-posicao" id="gradePosicao"></div>
+      </div>
+
+      <div class="secao-form">
+        <h3>Botão (opcional)</h3>
+        <div class="linha">
+          <div class="campo"><label for="bBotao">Texto do botão</label><input id="bBotao" maxlength="30" placeholder="Ex: Ver promoções"></div>
+          <div class="campo"><label for="bDestino">Leva para</label><select id="bDestino"></select></div>
+        </div>
+      </div>
+
+      <label class="chk"><input type="checkbox" id="bAtivo"> Aparece na loja</label>
+    </form>
+    <footer>
+      <button class="btn-principal" id="btnSalvarBanner">Salvar banner</button>
+      <button class="btn-perigo" id="btnExcluirBanner">Excluir banner</button>
     </footer>
   </aside>
 
