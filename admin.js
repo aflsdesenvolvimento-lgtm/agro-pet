@@ -223,6 +223,7 @@ async function abrirLoja(id) {
   montarLista();
   montarConfig();
   carregarPedidos(true);
+  if (!$("abaFinanceiro").classList.contains("oculto")) carregarFinanceiro();
 }
 
 // grava nome + configuração (capa, entrega...) da loja aberta
@@ -238,9 +239,10 @@ async function salvarConfig(msgOk) {
 // ================= abas =================
 function trocarAba(nome) {
   document.querySelectorAll("[data-aba]").forEach(x => x.classList.toggle("ativo", x.dataset.aba === nome));
-  ["produtos", "pedidos", "capa", "entrega", "lojas"].forEach(a =>
+  ["produtos", "pedidos", "financeiro", "capa", "entrega", "lojas"].forEach(a =>
     $("aba" + a[0].toUpperCase() + a.slice(1)).classList.toggle("oculto", a !== nome));
   if (nome === "pedidos") { carregarPedidos(); montarAvisos(); }
+  if (nome === "financeiro") carregarFinanceiro();
   if (nome === "lojas") montarLojas();
 }
 document.querySelectorAll("[data-aba]").forEach(b => b.onclick = () => trocarAba(b.dataset.aba));
@@ -403,7 +405,10 @@ function montarPedidos() {
   $("contPedidos").textContent = novos;
   $("contPedidos").classList.toggle("oculto", !novos);
   const f = $("filtroStatus").value;
-  const lista = pedidos.filter(p => f === "todos" ? true : f === "abertos" ? ["novo", "confirmado"].includes(p.status) : p.status === f);
+  const lista = pedidos.filter(p => f === "todos" ? true
+    : f === "abertos" ? ["novo", "confirmado"].includes(p.status)
+    : f === "receber" ? p.status === "entregue" && !p.pago
+    : p.status === f);
   $("listaPedidos").innerHTML = lista.length ? lista.map(p => {
     const e = p.entrega || {}, c = p.cliente || {};
     const tel = String(c.telefone || "").replace(/\D/g, "");
@@ -419,23 +424,262 @@ function montarPedidos() {
         <div class="det">💳 ${escaparHtml(p.pagamento)}${p.troco ? ` (troco para ${escaparHtml(p.troco)})` : ""}${p.obs ? ` · 📝 ${escaparHtml(p.obs)}` : ""}</div>
         <div class="rodape">
           <b>Total ${real(p.total)}</b>
-          <select data-status="${p.id}">${Object.entries(STATUS).map(([v, t]) => `<option value="${v}" ${v === p.status ? "selected" : ""}>${t}</option>`).join("")}</select>
+          <div class="acoes-pedido">
+            ${p.status === "cancelado" ? "" : `<label class="marca-pago ${p.pago ? "sim" : ""}"><input type="checkbox" data-pago="${p.id}" ${p.pago ? "checked" : ""}> 💰 ${p.pago ? "Pago" : "Não pago"}</label>`}
+            <select data-status="${p.id}">${Object.entries(STATUS).map(([v, t]) => `<option value="${v}" ${v === p.status ? "selected" : ""}>${t}</option>`).join("")}</select>
+          </div>
         </div>
       </div>`;
   }).join("") : `<div class="vazio">Nenhum pedido aqui ainda.</div>`;
 }
 $("filtroStatus").onchange = montarPedidos;
 $("btnAtualizarPedidos").onclick = () => carregarPedidos();
-$("listaPedidos").addEventListener("change", async ev => {
+const PAGA_NA_ENTREGA = ["Dinheiro", "Cartão de débito", "Cartão de crédito"];
+// grava mudanças no pedido e atualiza a lista e o financeiro
+async function mudarPedido(id, mudancas, msg) {
+  const r = await ocupado("Salvando...", async () => {
+    return checar(await db.from("pedidos").update(mudancas).eq("id", id).select().single());
+  });
+  if (r) {
+    const i = pedidos.findIndex(x => x.id === id);
+    if (i >= 0) pedidos[i] = r;
+    const j = finPedidos.findIndex(x => x.id === id);
+    if (j >= 0) finPedidos[j] = { ...finPedidos[j], ...r };
+    avisar(msg);
+  }
+  montarPedidos();
+  if (!$("abaFinanceiro").classList.contains("oculto")) montarFinanceiro();
+  return !!r;
+}
+async function aoMudarPedido(ev) {
   const s = ev.target.closest("[data-status]");
+  const pg = ev.target.closest("[data-pago]");
+  if (pg) {
+    const pago = pg.checked;
+    await mudarPedido(pg.dataset.pago, { pago }, pago ? "Pagamento marcado como recebido" : "Pagamento desmarcado");
+    return;
+  }
   if (!s) return;
   const id = s.dataset.status, novo = s.value;
-  const r = await ocupado("Salvando...", async () => { checar(await db.from("pedidos").update({ status: novo }).eq("id", id)); return true; });
-  if (r) { const p = pedidos.find(x => x.id === id); if (p) p.status = novo; avisar(`Pedido marcado como ${STATUS[novo].toLowerCase()}`); }
-  montarPedidos();
-});
+  const p = pedidos.find(x => x.id === id) || finPedidos.find(x => x.id === id);
+  const mudancas = { status: novo };
+  // entregou e o cliente paga na entrega? pergunta se já recebeu
+  if (novo === "entregue" && p && !p.pago && PAGA_NA_ENTREGA.includes(p.pagamento)
+      && confirm(`Pagamento na entrega (${p.pagamento}). Já recebeu ${real(p.total)}? Marcar como pago também?`)) {
+    mudancas.pago = true;
+  }
+  if (novo === "entregue" && p && !p.pago && p.pagamento === "Pix" && !mudancas.pago
+      && confirm(`O Pix de ${real(p.total)} já caiu? Marcar como pago também?`)) {
+    mudancas.pago = true;
+  }
+  await mudarPedido(id, mudancas, `Pedido marcado como ${STATUS[novo].toLowerCase()}${mudancas.pago ? " e pago" : ""}`);
+}
+$("listaPedidos").addEventListener("change", aoMudarPedido);
 // confere pedido novo a cada minuto enquanto o painel está aberto
 setInterval(() => { if (loja && document.visibilityState === "visible") carregarPedidos(true); }, 60000);
+
+// ================= financeiro =================
+// Base de tudo: pedidos FEITOS no período (criado_em), na loja aberta ou em todas (master).
+// Cada número sai dessa mesma lista, pra numerador e denominador baterem.
+let finPedidos = [];
+let finPeriodoTxt = "";
+
+function inicioDoDia(d) { return new Date(d.getFullYear(), d.getMonth(), d.getDate()); }
+function somaDias(d, n) { const x = new Date(d); x.setDate(x.getDate() + n); return x; }
+function isoLocal(d) { return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; }
+function dataBr(d) { return d.toLocaleDateString("pt-BR"); }
+
+function periodoEscolhido() {
+  const hoje = inicioDoDia(new Date());
+  const p = $("finPeriodo").value;
+  if (p === "hoje") return [hoje, somaDias(hoje, 1)];
+  if (p === "7") return [somaDias(hoje, -6), somaDias(hoje, 1)];
+  if (p === "30") return [somaDias(hoje, -29), somaDias(hoje, 1)];
+  if (p === "mes") return [new Date(hoje.getFullYear(), hoje.getMonth(), 1), somaDias(hoje, 1)];
+  if (p === "mesPassado") return [new Date(hoje.getFullYear(), hoje.getMonth() - 1, 1), new Date(hoje.getFullYear(), hoje.getMonth(), 1)];
+  const de = $("finDe").value ? new Date($("finDe").value + "T00:00") : somaDias(hoje, -29);
+  const ate = $("finAte").value ? somaDias(new Date($("finAte").value + "T00:00"), 1) : somaDias(hoje, 1);
+  return ate > de ? [de, ate] : [ate, de];
+}
+
+async function carregarFinanceiro() {
+  if (!loja) return;
+  const master = perfil?.papel === "master";
+  $("finEscopo").classList.toggle("oculto", !master);
+  const todas = master && $("finEscopo").value === "todas";
+  const [de, ate] = periodoEscolhido();
+  finPeriodoTxt = `${dataBr(de)} a ${dataBr(somaDias(ate, -1))}`;
+  const ok = await ocupado("Somando...", async () => {
+    let q = db.from("pedidos").select("*").gte("criado_em", de.toISOString()).lt("criado_em", ate.toISOString())
+      .order("criado_em").limit(5000);
+    if (!todas) q = q.eq("loja_id", loja.id);
+    finPedidos = checar(await q);
+    return true;
+  });
+  if (!ok) return;
+  $("finLegenda").textContent = `Pedidos feitos de ${finPeriodoTxt}${todas ? ", todas as lojas" : ` · ${loja.config.nome}`}.`;
+  montarFinanceiro();
+}
+
+function resumoFin(lista) {
+  const soma = l => l.reduce((s, p) => s + Number(p.total || 0), 0);
+  const validos = lista.filter(p => p.status !== "cancelado");
+  const entregues = lista.filter(p => p.status === "entregue");
+  const pagos = validos.filter(p => p.pago);
+  const receber = entregues.filter(p => !p.pago);
+  const andamento = lista.filter(p => ["novo", "confirmado"].includes(p.status));
+  const cancelados = lista.filter(p => p.status === "cancelado");
+  return {
+    pedidos: validos.length,
+    vendido: soma(entregues), nEntregues: entregues.length,
+    recebido: soma(pagos), nPagos: pagos.length,
+    receber: soma(receber), nReceber: receber.length, listaReceber: receber,
+    andamento: soma(andamento), nAndamento: andamento.length,
+    cancelado: soma(cancelados), nCancelados: cancelados.length,
+    ticket: entregues.length ? soma(entregues) / entregues.length : 0,
+    entregues,
+  };
+}
+
+function montarFinanceiro() {
+  const r = resumoFin(finPedidos);
+  const kpi = (rotulo, valor, extra) => `<div class="kpi"><div class="rotulo">${rotulo}</div><div class="valor">${valor}</div><div class="extra">${extra}</div></div>`;
+  const qtd = (n, um, varios) => `${n} ${n === 1 ? um : varios}`;
+  $("finKpis").innerHTML = [
+    kpi("Vendido (entregue)", real(r.vendido), qtd(r.nEntregues, "pedido entregue", "pedidos entregues")),
+    kpi("Recebido", real(r.recebido), qtd(r.nPagos, "pedido pago", "pedidos pagos")),
+    kpi("A receber", real(r.receber), qtd(r.nReceber, "entregue sem pagamento", "entregues sem pagamento")),
+    kpi("Em andamento", real(r.andamento), qtd(r.nAndamento, "pedido ainda não entregue", "pedidos ainda não entregues")),
+    kpi("Ticket médio", real(r.ticket), "por pedido entregue"),
+    kpi("Cancelados", real(r.cancelado), qtd(r.nCancelados, "pedido", "pedidos")),
+  ].join("");
+
+  // por loja (só quando a master olha todas)
+  const todas = perfil?.papel === "master" && $("finEscopo").value === "todas";
+  $("finPorLojaBox").classList.toggle("oculto", !todas);
+  if (todas) {
+    const linhas = lojas.map(l => ({ l, r: resumoFin(finPedidos.filter(p => p.loja_id === l.id)) }))
+      .filter(x => x.r.pedidos || x.r.nCancelados).sort((a, b) => b.r.vendido - a.r.vendido);
+    $("finPorLoja").innerHTML = `<thead><tr><th>Loja</th><th class="num">Pedidos</th><th class="num">Vendido</th><th class="num">Recebido</th><th class="num">A receber</th></tr></thead>
+      <tbody>${linhas.map(({ l, r }) => `<tr><td>${escaparHtml(l.config.nome)}</td><td class="num">${r.pedidos}</td><td class="num">${real(r.vendido)}</td><td class="num">${real(r.recebido)}</td><td class="num">${real(r.receber)}</td></tr>`).join("") || `<tr><td colspan="5">Nenhum pedido no período.</td></tr>`}</tbody>
+      <tfoot><tr><td>Total</td><td class="num">${r.pedidos}</td><td class="num">${real(r.vendido)}</td><td class="num">${real(r.recebido)}</td><td class="num">${real(r.receber)}</td></tr></tfoot>`;
+  }
+
+  montarGraficoDias(r.entregues);
+
+  // por forma de pagamento (pedidos entregues)
+  const formas = {};
+  r.entregues.forEach(p => {
+    const f = p.pagamento || "Não informado";
+    formas[f] = formas[f] || { n: 0, total: 0, pago: 0 };
+    formas[f].n++; formas[f].total += Number(p.total); if (p.pago) formas[f].pago += Number(p.total);
+  });
+  const fl = Object.entries(formas).sort((a, b) => b[1].total - a[1].total);
+  $("finFormas").innerHTML = fl.length ? `<thead><tr><th>Forma</th><th class="num">Pedidos</th><th class="num">Vendido</th><th class="num">Recebido</th></tr></thead>
+    <tbody>${fl.map(([f, v]) => `<tr><td>${escaparHtml(f)}</td><td class="num">${v.n}</td><td class="num">${real(v.total)}</td><td class="num">${real(v.pago)}</td></tr>`).join("")}</tbody>
+    <tfoot><tr><td>Total</td><td class="num">${r.nEntregues}</td><td class="num">${real(r.vendido)}</td><td class="num">${real(r.entregues.filter(p => p.pago).reduce((s, p) => s + Number(p.total), 0))}</td></tr></tfoot>`
+    : `<tbody><tr><td>Nenhum pedido entregue no período.</td></tr></tbody>`;
+
+  // produtos mais vendidos (pedidos entregues)
+  const prods = {};
+  r.entregues.forEach(p => (p.itens || []).forEach(i => {
+    const k = `${i.nome}${i.detalhe ? ` (${i.detalhe})` : ""}`;
+    prods[k] = prods[k] || { qtd: 0, valor: 0 };
+    prods[k].qtd += Number(i.qtd || 0); prods[k].valor += Number(i.preco || 0) * Number(i.qtd || 0);
+  }));
+  const pl = Object.entries(prods).sort((a, b) => b[1].valor - a[1].valor).slice(0, 10);
+  $("finProdutos").innerHTML = pl.length ? `<thead><tr><th>Produto</th><th class="num">Qtd</th><th class="num">Valor</th></tr></thead>
+    <tbody>${pl.map(([n, v]) => `<tr><td>${escaparHtml(n)}</td><td class="num">${v.qtd}</td><td class="num">${real(v.valor)}</td></tr>`).join("")}</tbody>`
+    : `<tbody><tr><td>Nenhum produto entregue no período.</td></tr></tbody>`;
+
+  // a receber
+  const nomeLoja = id => lojas.find(l => l.id === id)?.config.nome || "";
+  $("finReceber").innerHTML = r.listaReceber.length ? r.listaReceber.map(p => `
+    <div class="linha-adm">
+      <div class="meio">
+        <div class="nome">${escaparHtml(p.cliente?.nome || "Cliente")} · ${real(p.total)}</div>
+        <div class="sub">${new Date(p.criado_em).toLocaleDateString("pt-BR")} · ${escaparHtml(p.pagamento || "")}${todas ? " · " + escaparHtml(nomeLoja(p.loja_id)) : ""}${p.cliente?.telefone ? " · " + escaparHtml(p.cliente.telefone) : ""}</div>
+      </div>
+      <button class="btn-secundario" data-pago-rapido="${p.id}" style="padding:8px 12px">💰 Marcar pago</button>
+    </div>`).join("") : `<div class="vazio" style="padding:12px 0">Nada a receber nesse período. 👍</div>`;
+}
+
+// gráfico de barras: valor entregue por dia (uma série, na cor da loja)
+function montarGraficoDias(entregues) {
+  const [de, ate] = periodoEscolhido();
+  const dias = [];
+  for (let d = new Date(de); d < ate && dias.length < 93; d = somaDias(d, 1)) dias.push(isoLocal(d));
+  const porDia = Object.fromEntries(dias.map(d => [d, { total: 0, n: 0 }]));
+  entregues.forEach(p => { const k = isoLocal(new Date(p.criado_em)); if (porDia[k]) { porDia[k].total += Number(p.total); porDia[k].n++; } });
+  const max = Math.max(0, ...dias.map(d => porDia[d].total));
+  const passo = Math.ceil(dias.length / 8); // no máximo ~8 datas escritas embaixo
+  const fmtDia = d => d.split("-").reverse().slice(0, 2).join("/");
+  $("finGrafico").innerHTML = max ? dias.map((d, i) => {
+    const v = porDia[d], alt = v.total / max * 100;
+    const ehMax = v.total === max;
+    return `<div class="coluna" data-dica="${fmtDia(d)}: ${real(v.total)} · ${v.n} ${v.n === 1 ? "pedido" : "pedidos"}" aria-label="${fmtDia(d)}: ${real(v.total)}">
+      ${ehMax ? `<span class="rotulo-max" style="bottom:calc(${alt}% + 4px)">${real(v.total)}</span>` : ""}
+      <div class="barra" style="height:${alt}%"></div>
+      ${i % passo === 0 ? `<span class="dia">${fmtDia(d)}</span>` : ""}
+    </div>`;
+  }).join("") : `<div class="vazio">Nenhuma venda entregue no período.</div>`;
+  $("finTabelaDia").innerHTML = `<thead><tr><th>Dia</th><th class="num">Pedidos</th><th class="num">Vendido</th></tr></thead>
+    <tbody>${dias.filter(d => porDia[d].n).map(d => `<tr><td>${fmtDia(d)}</td><td class="num">${porDia[d].n}</td><td class="num">${real(porDia[d].total)}</td></tr>`).join("") || `<tr><td colspan="3">Sem vendas entregues.</td></tr>`}</tbody>`;
+}
+
+// dica ao passar o mouse / tocar numa barra
+const dicaGrafico = document.createElement("div");
+dicaGrafico.className = "dica-grafico oculto";
+document.body.appendChild(dicaGrafico);
+function mostrarDica(ev) {
+  const col = ev.target.closest("#finGrafico .coluna");
+  if (!col) { dicaGrafico.classList.add("oculto"); return; }
+  dicaGrafico.textContent = col.dataset.dica;
+  dicaGrafico.classList.remove("oculto");
+  const x = Math.min(ev.clientX + 12, window.innerWidth - dicaGrafico.offsetWidth - 8);
+  dicaGrafico.style.left = Math.max(8, x) + "px";
+  dicaGrafico.style.top = (ev.clientY - 40) + "px";
+}
+$("finGrafico").addEventListener("mousemove", mostrarDica);
+$("finGrafico").addEventListener("click", mostrarDica);
+$("finGrafico").addEventListener("mouseleave", () => dicaGrafico.classList.add("oculto"));
+
+$("finPeriodo").onchange = () => {
+  $("finDatas").classList.toggle("oculto", $("finPeriodo").value !== "personalizado");
+  if ($("finPeriodo").value === "personalizado") {
+    if (!$("finDe").value) $("finDe").value = isoLocal(somaDias(new Date(), -29));
+    if (!$("finAte").value) $("finAte").value = isoLocal(new Date());
+  }
+  carregarFinanceiro();
+};
+$("finDe").onchange = carregarFinanceiro;
+$("finAte").onchange = carregarFinanceiro;
+$("finEscopo").onchange = carregarFinanceiro;
+$("finReceber").addEventListener("click", ev => {
+  const b = ev.target.closest("[data-pago-rapido]");
+  if (b) mudarPedido(b.dataset.pagoRapido, { pago: true }, "Pagamento marcado como recebido");
+});
+
+// planilha (abre no Excel): todos os pedidos do período
+$("btnBaixarFin").onclick = () => {
+  if (!finPedidos.length) { avisar("Nenhum pedido no período"); return; }
+  const nomeLoja = id => lojas.find(l => l.id === id)?.config.nome || "";
+  const num = v => String(Number(v || 0).toFixed(2)).replace(".", ",");
+  const cel = v => `"${String(v ?? "").replace(/"/g, '""')}"`;
+  const linhas = [["Data", "Loja", "Pedido", "Cliente", "Telefone", "Status", "Pago", "Pago em", "Pagamento", "Taxa entrega", "Total", "Data entrega", "Horário", "Bairro", "Cidade", "Itens"]];
+  finPedidos.forEach(p => linhas.push([
+    new Date(p.criado_em).toLocaleString("pt-BR"), nomeLoja(p.loja_id), p.numero, p.cliente?.nome, p.cliente?.telefone,
+    STATUS[p.status] || p.status, p.pago ? "Sim" : "Não", p.pago_em ? new Date(p.pago_em).toLocaleString("pt-BR") : "",
+    p.pagamento, num(p.taxa), num(p.total), (p.entrega?.data || "").split("-").reverse().join("/"), p.entrega?.horario,
+    p.entrega?.bairro, p.entrega?.cidade, (p.itens || []).map(i => `${i.qtd}x ${i.nome}${i.detalhe ? ` (${i.detalhe})` : ""}`).join(" | "),
+  ]));
+  const csv = "﻿" + linhas.map(l => l.map(cel).join(";")).join("\r\n");
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+  a.download = `financeiro_${$("finEscopo").value === "todas" ? "todas-lojas" : loja.slug}_${finPeriodoTxt.replace(/\//g, "-").replace(/ a /, "_a_")}.csv`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+};
 
 // ================= aviso de pedido novo (notificação no aparelho) =================
 const FUNC_AVISO = SUPA_URL + "/functions/v1/avisar-pedido";

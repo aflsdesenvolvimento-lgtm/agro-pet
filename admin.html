@@ -95,6 +95,39 @@
     .status.entregue { background: var(--verde-claro); color: var(--verde-escuro); }
     .status.cancelado { background: #eee; color: #777; }
     .pedido a { color: var(--verde-escuro); font-weight: 600; }
+    /* pago */
+    .acoes-pedido { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    .marca-pago { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; font-weight: 700; border: 1px solid var(--borda); border-radius: 8px; padding: 5px 9px; cursor: pointer; background: #fff; color: var(--texto-suave); }
+    .marca-pago.sim { background: var(--verde-claro); color: var(--verde-escuro); border-color: var(--verde); }
+    .marca-pago input { margin: 0; }
+    /* financeiro */
+    .filtros-fin { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 6px; }
+    .filtros-fin select, .fin-datas input { border: 1px solid var(--borda); border-radius: 10px; padding: 9px 10px; background: #fff; }
+    .fin-datas { display: inline-flex; gap: 6px; align-items: center; font-size: 14px; }
+    .kpis { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; margin-bottom: 12px; }
+    .kpi { background: #fff; border-radius: 12px; box-shadow: var(--sombra); padding: 12px 14px; }
+    .kpi .rotulo { font-size: 13px; color: var(--texto-suave); }
+    .kpi .valor { font-size: 22px; font-weight: 800; margin-top: 2px; font-variant-numeric: tabular-nums; }
+    .kpi .extra { font-size: 12px; color: var(--texto-suave); margin-top: 2px; }
+    .tabela-rolagem { overflow-x: auto; }
+    .tabela { width: 100%; border-collapse: collapse; font-size: 14px; font-variant-numeric: tabular-nums; }
+    .tabela th { text-align: left; font-size: 12px; color: var(--texto-suave); font-weight: 600; padding: 6px 8px; border-bottom: 1px solid var(--borda); white-space: nowrap; }
+    .tabela td { padding: 7px 8px; border-bottom: 1px solid #f0ede6; }
+    .tabela .num { text-align: right; white-space: nowrap; }
+    .tabela tfoot td { font-weight: 700; border-bottom: 0; }
+    .duas-colunas { display: grid; grid-template-columns: 1fr; gap: 0 12px; }
+    @media (min-width: 700px) { .duas-colunas { grid-template-columns: 1fr 1fr; } }
+    /* gráfico de barras (uma série) */
+    .grafico { position: relative; height: 180px; display: flex; align-items: flex-end; gap: 2px; padding: 0 0 22px; border-bottom: 1px solid var(--borda); }
+    .grafico .coluna { flex: 1; height: 100%; display: flex; align-items: flex-end; position: relative; cursor: default; }
+    .grafico .barra { width: 100%; max-width: 28px; margin: 0 auto; background: var(--verde); border-radius: 4px 4px 0 0; min-height: 0; }
+    .grafico .coluna:hover .barra { filter: brightness(1.15); }
+    .grafico .dia { position: absolute; bottom: -20px; left: 50%; transform: translateX(-50%); font-size: 11px; color: var(--texto-suave); white-space: nowrap; }
+    .grafico .rotulo-max { position: absolute; left: 50%; transform: translateX(-50%); font-size: 11px; font-weight: 700; white-space: nowrap; color: var(--texto); }
+    .grafico .vazio { width: 100%; align-self: center; }
+    .dica-grafico { position: fixed; z-index: 90; background: var(--texto); color: #fff; font-size: 13px; padding: 6px 10px; border-radius: 8px; pointer-events: none; white-space: nowrap; }
+    .ver-tabela { margin-top: 10px; font-size: 14px; }
+    .ver-tabela summary { cursor: pointer; color: var(--verde-escuro); font-weight: 600; }
     /* aviso de pedido novo */
     .cartao-avisos { background: #fff; border-radius: 12px; box-shadow: var(--sombra); padding: 12px 14px; margin-bottom: 12px; display: flex; gap: 10px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
     .cartao-avisos.ligado { background: var(--verde-claro); }
@@ -164,6 +197,7 @@
     <div class="abas">
       <button class="chip ativo" data-aba="produtos">Produtos</button>
       <button class="chip" data-aba="pedidos">Pedidos <span class="contador oculto" id="contPedidos"></span></button>
+      <button class="chip" data-aba="financeiro">💰 Financeiro</button>
       <button class="chip" data-aba="capa">Capa da loja</button>
       <button class="chip" data-aba="entrega">Entrega</button>
       <button class="chip oculto" data-aba="lojas" id="abaLojasBtn">⭐ Lojas</button>
@@ -186,12 +220,63 @@
         <select id="filtroStatus" style="flex:1;border:1px solid var(--borda);border-radius:10px;padding:10px;background:#fff">
           <option value="abertos">Novos e confirmados</option>
           <option value="todos">Todos</option>
+          <option value="receber">A receber (entregues e não pagos)</option>
           <option value="entregue">Entregues</option>
           <option value="cancelado">Cancelados</option>
         </select>
         <button class="btn-secundario" id="btnAtualizarPedidos" style="padding:10px 14px">↻ Atualizar</button>
       </div>
       <div id="listaPedidos" class="lista-adm"></div>
+    </section>
+
+    <!-- ===== financeiro ===== -->
+    <section id="abaFinanceiro" class="oculto">
+      <div class="filtros-fin">
+        <select id="finPeriodo">
+          <option value="hoje">Hoje</option>
+          <option value="7">Últimos 7 dias</option>
+          <option value="mes" selected>Este mês</option>
+          <option value="mesPassado">Mês passado</option>
+          <option value="30">Últimos 30 dias</option>
+          <option value="personalizado">Escolher datas</option>
+        </select>
+        <span id="finDatas" class="oculto fin-datas"><input type="date" id="finDe"> até <input type="date" id="finAte"></span>
+        <select id="finEscopo" class="oculto">
+          <option value="loja">Só a loja aberta</option>
+          <option value="todas">Todas as lojas</option>
+        </select>
+        <button class="btn-secundario" id="btnBaixarFin" style="padding:9px 12px">⬇ Planilha</button>
+      </div>
+      <p class="ajuda" id="finLegenda" style="margin:0 0 12px">Pedidos feitos no período escolhido.</p>
+
+      <div class="kpis" id="finKpis"></div>
+
+      <div class="secao-form" id="finPorLojaBox">
+        <h3>Por loja</h3>
+        <div class="tabela-rolagem"><table class="tabela" id="finPorLoja"></table></div>
+      </div>
+
+      <div class="secao-form">
+        <h3>Vendas por dia <span class="ajuda" style="font-weight:400">(pedidos entregues)</span></h3>
+        <div class="grafico" id="finGrafico"></div>
+        <details class="ver-tabela"><summary>Ver em tabela</summary><div class="tabela-rolagem"><table class="tabela" id="finTabelaDia"></table></div></details>
+      </div>
+
+      <div class="duas-colunas">
+        <div class="secao-form">
+          <h3>Por forma de pagamento</h3>
+          <div class="tabela-rolagem"><table class="tabela" id="finFormas"></table></div>
+        </div>
+        <div class="secao-form">
+          <h3>Produtos mais vendidos</h3>
+          <div class="tabela-rolagem"><table class="tabela" id="finProdutos"></table></div>
+        </div>
+      </div>
+
+      <div class="secao-form">
+        <h3>A receber <span class="ajuda" style="font-weight:400">(entregues e ainda não pagos)</span></h3>
+        <div id="finReceber" class="lista-adm"></div>
+      </div>
     </section>
 
     <!-- ===== lojas (só master) ===== -->
