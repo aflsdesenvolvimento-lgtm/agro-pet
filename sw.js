@@ -3,7 +3,7 @@
 // (atualização chega pra todo mundo na hora); sem internet, usa a cópia guardada.
 // Chamadas pra fora (ViaCEP, WhatsApp) passam direto, sem cache.
 
-const VERSAO = "agropet-v1";
+const VERSAO = "agropet-v2";
 const ARQUIVOS = [
   "./", "./index.html", "./admin.html",
   "./estilo.css", "./dados.js", "./loja.js", "./admin.js", "./pwa.js",
@@ -39,4 +39,35 @@ self.addEventListener("fetch", ev => {
       .catch(() => caches.match(req, { ignoreSearch: true })
         .then(r => r || (req.mode === "navigate" ? caches.match("./index.html") : undefined)))
   );
+});
+
+// ---------- aviso de pedido novo (notificação no celular) ----------
+self.addEventListener("push", ev => {
+  let d = {};
+  try { d = ev.data ? ev.data.json() : {}; } catch (e) { d = { corpo: ev.data ? ev.data.text() : "" }; }
+  ev.waitUntil(self.registration.showNotification(d.titulo || "🛒 Novo pedido", {
+    body: d.corpo || "Abra o painel pra ver o pedido.",
+    icon: "icones/painel-192.png",
+    badge: "icones/painel-192.png",
+    tag: d.tag || "pedido",
+    renotify: true,
+    vibrate: [200, 100, 200],
+    data: { url: d.url || "admin.html#pedidos" },
+  }));
+});
+
+// tocou no aviso: abre (ou traz pra frente) o painel já na aba Pedidos
+self.addEventListener("notificationclick", ev => {
+  ev.notification.close();
+  const destino = new URL(ev.notification.data?.url || "admin.html#pedidos", self.location.href).href;
+  ev.waitUntil((async () => {
+    const janelas = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+    const painel = janelas.find(j => j.url.includes("admin.html"));
+    if (painel) {
+      await painel.focus();
+      painel.postMessage({ tipo: "abrir-pedidos" });
+    } else {
+      await self.clients.openWindow(destino);
+    }
+  })());
 });

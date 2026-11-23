@@ -95,6 +95,11 @@
     .status.entregue { background: var(--verde-claro); color: var(--verde-escuro); }
     .status.cancelado { background: #eee; color: #777; }
     .pedido a { color: var(--verde-escuro); font-weight: 600; }
+    /* aviso de pedido novo */
+    .cartao-avisos { background: #fff; border-radius: 12px; box-shadow: var(--sombra); padding: 12px 14px; margin-bottom: 12px; display: flex; gap: 10px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
+    .cartao-avisos.ligado { background: var(--verde-claro); }
+    .avisos-texto { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 200px; }
+    .avisos-botoes { display: flex; gap: 6px; align-items: center; }
     /* lojas (master) */
     .loja-card { background: #fff; border-radius: 12px; box-shadow: var(--sombra); padding: 12px 14px; }
     .loja-card .cab { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
@@ -166,6 +171,17 @@
 
     <!-- ===== pedidos ===== -->
     <section id="abaPedidos" class="oculto">
+      <div class="cartao-avisos" id="cartaoAvisos">
+        <div class="avisos-texto">
+          <b id="avisosTitulo">🔔 Aviso de pedido novo</b>
+          <span id="avisosDetalhe" class="ajuda" style="margin:0">Receba uma notificação neste aparelho quando chegar pedido.</span>
+        </div>
+        <div class="avisos-botoes">
+          <button class="btn-principal" id="btnLigarAvisos" style="padding:10px 14px">Ligar avisos</button>
+          <button class="btn-secundario oculto" id="btnTestarAvisos" style="padding:10px 14px">Testar</button>
+          <button class="btn-icone oculto" id="btnDesligarAvisos" style="font-size:13px">Desligar</button>
+        </div>
+      </div>
       <div class="linha" style="align-items:center;margin-bottom:12px">
         <select id="filtroStatus" style="flex:1;border:1px solid var(--borda);border-radius:10px;padding:10px;background:#fff">
           <option value="abertos">Novos e confirmados</option>

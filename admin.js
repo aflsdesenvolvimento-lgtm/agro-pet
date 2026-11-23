@@ -187,6 +187,8 @@ async function entrar() {
   if (!lojas.some(l => l.id === escolhida)) escolhida = lojas[0]?.id;
   if (escolhida) await abrirLoja(escolhida);
   else if (perfil.papel === "master") { trocarAba("lojas"); avisar("Crie a primeira loja"); }
+  // abriu pelo aviso de pedido novo
+  if (escolhida && location.hash === "#pedidos") trocarAba("pedidos");
 }
 
 async function carregarLojas() {
@@ -238,7 +240,7 @@ function trocarAba(nome) {
   document.querySelectorAll("[data-aba]").forEach(x => x.classList.toggle("ativo", x.dataset.aba === nome));
   ["produtos", "pedidos", "capa", "entrega", "lojas"].forEach(a =>
     $("aba" + a[0].toUpperCase() + a.slice(1)).classList.toggle("oculto", a !== nome));
-  if (nome === "pedidos") carregarPedidos();
+  if (nome === "pedidos") { carregarPedidos(); montarAvisos(); }
   if (nome === "lojas") montarLojas();
 }
 document.querySelectorAll("[data-aba]").forEach(b => b.onclick = () => trocarAba(b.dataset.aba));
@@ -434,6 +436,124 @@ $("listaPedidos").addEventListener("change", async ev => {
 });
 // confere pedido novo a cada minuto enquanto o painel está aberto
 setInterval(() => { if (loja && document.visibilityState === "visible") carregarPedidos(true); }, 60000);
+
+// ================= aviso de pedido novo (notificação no aparelho) =================
+const FUNC_AVISO = SUPA_URL + "/functions/v1/avisar-pedido";
+const EH_IOS = /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+const INSTALADO = window.matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+function suportaAvisos() { return "serviceWorker" in navigator && "PushManager" in window && "Notification" in window; }
+function chaveParaBytes(b64) {
+  const s = atob((b64 + "=".repeat((4 - b64.length % 4) % 4)).replace(/-/g, "+").replace(/_/g, "/"));
+  return Uint8Array.from(s, c => c.charCodeAt(0));
+}
+async function inscricaoDoAparelho() {
+  if (!suportaAvisos()) return null;
+  const reg = await navigator.serviceWorker.ready;
+  return reg.pushManager.getSubscription();
+}
+
+async function montarAvisos() {
+  const cartao = $("cartaoAvisos"), det = $("avisosDetalhe");
+  const mostrar = ligado => {
+    cartao.classList.toggle("ligado", ligado);
+    $("avisosTitulo").textContent = ligado ? "🔔 Avisos ligados neste aparelho" : "🔔 Aviso de pedido novo";
+    $("btnLigarAvisos").classList.toggle("oculto", ligado);
+    $("btnTestarAvisos").classList.toggle("oculto", !ligado);
+    $("btnDesligarAvisos").classList.toggle("oculto", !ligado);
+  };
+  $("btnLigarAvisos").disabled = false;
+  if (!suportaAvisos()) {
+    mostrar(false);
+    $("btnLigarAvisos").disabled = true;
+    det.textContent = EH_IOS && !INSTALADO
+      ? "No iPhone: primeiro instale o Painel na tela de início (Compartilhar → Adicionar à Tela de Início) e abra por lá."
+      : "Este navegador não aceita avisos. Use o Chrome (Android ou computador) ou o Painel instalado no iPhone.";
+    return;
+  }
+  if (Notification.permission === "denied") {
+    mostrar(false);
+    $("btnLigarAvisos").disabled = true;
+    det.textContent = "As notificações estão bloqueadas pra este site no navegador. Libere nas configurações do site e abra o painel de novo.";
+    return;
+  }
+  let ligado = false;
+  try {
+    const sub = await inscricaoDoAparelho();
+    if (sub) {
+      const { data } = await db.from("push_inscricoes").select("id").eq("endpoint", sub.endpoint).maybeSingle();
+      ligado = !!data;
+    }
+  } catch (e) { console.warn(e); }
+  mostrar(ligado);
+  det.textContent = ligado
+    ? (perfil?.papel === "master" ? "Você recebe aqui os pedidos de todas as lojas." : "Você recebe aqui os pedidos da sua loja.")
+    : "Receba uma notificação neste aparelho quando chegar pedido.";
+}
+
+$("btnLigarAvisos").onclick = async () => {
+  const permissao = await Notification.requestPermission();
+  if (permissao !== "granted") { avisar("Sem permitir as notificações o aviso não aparece"); montarAvisos(); return; }
+  const ok = await ocupado("Ligando avisos...", async () => {
+    const { publica } = await (await fetch(FUNC_AVISO)).json();
+    if (!publica) throw new Error("Não deu pra ligar os avisos agora. Tente de novo.");
+    const chave = chaveParaBytes(publica);
+    const reg = await navigator.serviceWorker.ready;
+    let sub = await reg.pushManager.getSubscription();
+    // inscrição antiga com outra chave: refaz
+    if (sub && sub.options?.applicationServerKey) {
+      const atual = new Uint8Array(sub.options.applicationServerKey);
+      if (atual.length !== chave.length || atual.some((b, i) => b !== chave[i])) { await sub.unsubscribe(); sub = null; }
+    }
+    if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: chave });
+    const j = sub.toJSON();
+    const { data: { user } } = await db.auth.getUser();
+    await db.from("push_inscricoes").delete().eq("endpoint", j.endpoint); // só apaga se for dela mesma
+    checar(await db.from("push_inscricoes").insert({
+      user_id: user.id,
+      loja_id: perfil.papel === "master" ? null : perfil.loja_id,
+      endpoint: j.endpoint, p256dh: j.keys.p256dh, auth: j.keys.auth,
+      aparelho: navigator.userAgent.slice(0, 150),
+    }));
+    return true;
+  });
+  await montarAvisos();
+  if (ok) avisar("Avisos ligados! Toque em Testar pra ver como chega.");
+};
+
+$("btnTestarAvisos").onclick = async () => {
+  const r = await ocupado("Mandando aviso de teste...", async () => {
+    const { data: { session } } = await db.auth.getSession();
+    const resp = await fetch(FUNC_AVISO, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: "Bearer " + session.access_token },
+      body: JSON.stringify({ teste: true }),
+    });
+    const j = await resp.json();
+    if (!resp.ok) throw new Error(j.erro || "falhou");
+    return j;
+  });
+  if (r) avisar(r.enviados ? "Aviso de teste enviado — deve aparecer em segundos" : "Nenhum aparelho recebeu. Desligue e ligue os avisos de novo.");
+};
+
+$("btnDesligarAvisos").onclick = async () => {
+  await ocupado("Desligando...", async () => {
+    const sub = await inscricaoDoAparelho();
+    if (sub) {
+      await db.from("push_inscricoes").delete().eq("endpoint", sub.endpoint);
+      await sub.unsubscribe();
+    }
+    return true;
+  });
+  await montarAvisos();
+  avisar("Avisos desligados neste aparelho");
+};
+
+// tocou na notificação com o painel aberto: vai pra aba Pedidos
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.addEventListener("message", ev => {
+    if (ev.data?.tipo === "abrir-pedidos" && loja) trocarAba("pedidos");
+  });
+}
 
 // ================= lojas (só master) =================
 function slugDe(texto) {
