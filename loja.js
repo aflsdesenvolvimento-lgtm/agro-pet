@@ -207,7 +207,7 @@ function montarPainel() {
     prepararData();
     $("rodapePainel").innerHTML = `
       <div class="linha-total grande"><span>Total</span><span>${real(t.total)}</span></div>
-      <button class="btn-principal" id="btnEnviar">Enviar pedido${loja.config.whatsapp ? " pelo WhatsApp" : ""}</button>`;
+      <button class="btn-principal" id="btnEnviar">Enviar pedido</button>`;
   }
 
   if (passo === "ok") {
@@ -341,7 +341,7 @@ function montarMensagem(pedido) {
   const e = pedido.entrega;
   const dataTxt = `${DIAS[dataDeISO(e.data).getDay()]}, ${e.data.split("-").reverse().join("/")}`;
   return [
-    `*Novo pedido - ${c.nome}*`,
+    `*Resumo do pedido - ${c.nome}*`,
     ``,
     `*Cliente:* ${pedido.cliente.nome}`,
     `*Telefone:* ${pedido.cliente.telefone}`,
@@ -361,8 +361,9 @@ function montarMensagem(pedido) {
   ].filter(l => l !== null).join("\n");
 }
 
-function enviarPedido() {
-  if (!validar()) return;
+let enviando = false; // evita pedido em dobro se tocar duas vezes no botão
+async function enviarPedido() {
+  if (enviando || !validar()) return;
   const t = totais();
   if (!t.itens.length) { abrirPainel("itens"); return; }
   const pedido = {
@@ -383,21 +384,24 @@ function enviarPedido() {
     troco: $("fPagamento").value === "Dinheiro" ? $("fTroco").value.trim() : "",
     obs: $("fObs").value.trim(),
   };
-  const texto = montarMensagem(pedido);
+  const texto = montarMensagem(pedido).replace(/\*/g, "");
 
-  // abre o WhatsApp primeiro (o navegador só deixa abrir janela direto do toque no botão)
-  const numero = String(loja.config.whatsapp || "").replace(/\D/g, "");
-  if (numero) {
-    const destino = numero.startsWith("55") ? numero : "55" + numero;
-    window.open(`https://wa.me/${destino}?text=${encodeURIComponent(texto)}`, "_blank");
-  }
-
-  // e guarda o pedido no banco, pra loja ver no painel
-  db.from("pedidos").insert({
+  // o pedido vai direto pro banco: a loja vê no painel e recebe a notificação no celular
+  const botao = $("btnEnviar");
+  if (botao) { botao.disabled = true; botao.textContent = "Enviando pedido..."; }
+  enviando = true;
+  const { error } = await db.from("pedidos").insert({
     loja_id: loja.id, numero: pedido.numero, cliente: pedido.cliente, itens: pedido.itens,
     taxa: pedido.taxa, total: pedido.total, entrega: pedido.entrega,
     pagamento: pedido.pagamento, troco: pedido.troco, obs: pedido.obs,
-  }).then(({ error }) => { if (error) console.warn("Pedido não foi guardado no banco:", error.message); });
+  });
+  enviando = false;
+  if (error) {
+    console.warn("Pedido não foi guardado no banco:", error.message);
+    if (botao) { botao.disabled = false; botao.textContent = "Enviar pedido"; }
+    avisar("Não conseguimos enviar o pedido. Confira a internet e tente de novo.");
+    return;
+  }
 
   carrinho = {};
   gravarCarrinho();
@@ -405,10 +409,8 @@ function enviarPedido() {
   $("viewOk").innerHTML = `
     <div class="confirmado">
       <div class="grande">🐾</div>
-      <h3>Pedido montado!</h3>
-      <p>${numero
-        ? "Abrimos o WhatsApp da loja com o pedido pronto. É só tocar em <b>enviar</b> lá."
-        : "O WhatsApp da loja ainda não foi cadastrado. Este é o resumo do pedido:"}</p>
+      <h3>Pedido enviado!</h3>
+      <p>A loja já recebeu seu pedido <b>${escaparHtml(pedido.numero)}</b>. Se precisar, ela fala com você pelo telefone que você informou.</p>
       <div class="resumo-pedido">${escaparHtml(texto)}</div>
     </div>`;
   montarPainel();

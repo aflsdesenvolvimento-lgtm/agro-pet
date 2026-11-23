@@ -4,7 +4,7 @@ const $ = id => document.getElementById(id);
 const DIAS_CURTOS = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
 const CHAVE_LOJA_PAINEL = "agropet_painel_loja"; // última loja aberta pela master
 
-let perfil = null;   // { papel: 'master' | 'adm', loja_id, email }
+let perfil = null;   // { user_id, papel: 'master' | 'adm' | 'equipe', loja_id, email, nome, telefone, abas }
 let lojas = [];      // lojas que essa pessoa pode editar
 let loja = null;     // loja aberta: { id, slug, ativa, config, produtos }
 let pedidos = [];
@@ -79,6 +79,9 @@ function mostrarTela(qual) {
   $("areaPainel").classList.toggle("oculto", qual !== "painel");
   $("btnSair").classList.toggle("oculto", qual === "login");
   $("linkVerLoja").classList.toggle("oculto", qual !== "painel");
+  $("btnConta").classList.toggle("oculto", qual !== "painel");
+  $("marcaIcone").classList.toggle("oculto", qual === "painel");
+  if (qual !== "painel") fecharMenuConta();
 }
 
 function mostrarLogin(modo = "login", msg = "", tipoMsg = "") {
@@ -158,6 +161,7 @@ $("formLogin").addEventListener("submit", async ev => {
 $("btnSair").onclick = async () => {
   await db.auth.signOut();
   perfil = null; loja = null; lojas = [];
+  $("pontoConta").classList.add("oculto");
   mostrarLogin("login", "Você saiu do painel.", "ok");
 };
 $("btnTentarDeNovo").onclick = () => entrar();
@@ -181,19 +185,23 @@ async function entrar() {
   });
   if (!ok) return;
   mostrarTela("painel");
-  $("abaLojasBtn").classList.toggle("oculto", perfil.papel !== "master");
-  let escolhida = perfil.papel === "adm" ? perfil.loja_id : null;
+  document.querySelectorAll(".abas [data-aba]").forEach(b => b.classList.toggle("oculto", !podeAba(b.dataset.aba)));
+  let escolhida = perfil.papel !== "master" ? perfil.loja_id : null;
   if (!escolhida) { try { escolhida = localStorage.getItem(CHAVE_LOJA_PAINEL); } catch (e) {} }
   if (!lojas.some(l => l.id === escolhida)) escolhida = lojas[0]?.id;
-  if (escolhida) await abrirLoja(escolhida);
+  if (escolhida) {
+    await abrirLoja(escolhida);
+    // abriu pelo aviso de pedido novo
+    const inicial = location.hash === "#pedidos" && podeAba("pedidos") ? "pedidos" : primeiraAba();
+    if (inicial) trocarAba(inicial);
+    else { abrirConta("dados"); avisar("Sua conta ainda não tem nenhuma parte do painel liberada. Fale com o administrador da loja."); }
+  }
   else if (perfil.papel === "master") { trocarAba("lojas"); avisar("Crie a primeira loja"); }
-  // abriu pelo aviso de pedido novo
-  if (escolhida && location.hash === "#pedidos") trocarAba("pedidos");
 }
 
 async function carregarLojas() {
   let q = db.from("lojas").select("id,slug,nome,config,ativa,criada_em").order("nome");
-  if (perfil.papel === "adm") q = q.eq("id", perfil.loja_id);
+  if (perfil.papel !== "master") q = q.eq("id", perfil.loja_id);
   lojas = checar(await q).map(lojaDoBanco);
   montarSeletor();
 }
@@ -222,8 +230,11 @@ async function abrirLoja(id) {
   corAtual = loja.config.corPrincipal || "#2f6b3a";
   montarLista();
   montarConfig();
-  carregarPedidos(true);
+  if (podeAba("pedidos")) carregarPedidos(true);
   if (!$("abaFinanceiro").classList.contains("oculto")) carregarFinanceiro();
+  // master trocou de loja com a Equipe/Mensalidade aberta: recarrega pra loja nova
+  if (!$("abaConta").classList.contains("oculto") && (contaAtual === "equipe" || contaAtual === "mensalidade")) abrirConta(contaAtual);
+  atualizarPontoConta();
 }
 
 // grava nome + configuração (capa, entrega...) da loja aberta
@@ -237,9 +248,18 @@ async function salvarConfig(msgOk) {
 }
 
 // ================= abas =================
+const ABAS_PAINEL = ["produtos", "pedidos", "financeiro", "capa", "entrega", "lojas"];
+// o que cada um pode abrir (o banco confere de novo: isso aqui só esconde)
+function podeAba(aba) {
+  if (!perfil) return false;
+  if (aba === "lojas") return perfil.papel === "master";
+  return perfil.papel !== "equipe" || (perfil.abas || []).includes(aba);
+}
+function primeiraAba() { return ABAS_PAINEL.find(podeAba) || null; }
 function trocarAba(nome) {
+  if (!podeAba(nome)) { nome = primeiraAba(); if (!nome) { abrirConta("dados"); return; } }
   document.querySelectorAll("[data-aba]").forEach(x => x.classList.toggle("ativo", x.dataset.aba === nome));
-  ["produtos", "pedidos", "financeiro", "capa", "entrega", "lojas"].forEach(a =>
+  [...ABAS_PAINEL, "conta"].forEach(a =>
     $("aba" + a[0].toUpperCase() + a.slice(1)).classList.toggle("oculto", a !== nome));
   if (nome === "pedidos") { carregarPedidos(); montarAvisos(); }
   if (nome === "financeiro") carregarFinanceiro();
@@ -720,17 +740,19 @@ async function montarAvisos() {
     det.textContent = "As notificações estão bloqueadas pra este site no navegador. Libere nas configurações do site e abra o painel de novo.";
     return;
   }
-  let ligado = false;
+  let ligado = false, outraLoja = "";
   try {
     const sub = await inscricaoDoAparelho();
     if (sub) {
-      const { data } = await db.from("push_inscricoes").select("id").eq("endpoint", sub.endpoint).maybeSingle();
-      ligado = !!data;
+      const { data } = await db.from("push_inscricoes").select("id,loja_id").eq("endpoint", sub.endpoint).maybeSingle();
+      ligado = !!data && data.loja_id === loja?.id;
+      if (data && !ligado) outraLoja = lojas.find(l => l.id === data.loja_id)?.config.nome || "outra loja";
     }
   } catch (e) { console.warn(e); }
   mostrar(ligado);
   det.textContent = ligado
-    ? (perfil?.papel === "master" ? "Você recebe aqui os pedidos de todas as lojas." : "Você recebe aqui os pedidos da sua loja.")
+    ? (perfil?.papel === "master" ? `Você recebe aqui os pedidos de ${loja.config.nome}.` : "Você recebe aqui os pedidos da sua loja.")
+    : outraLoja ? `Este aparelho recebe os pedidos de ${outraLoja}. Ligar aqui troca para esta loja.`
     : "Receba uma notificação neste aparelho quando chegar pedido.";
 }
 
@@ -754,7 +776,7 @@ $("btnLigarAvisos").onclick = async () => {
     await db.from("push_inscricoes").delete().eq("endpoint", j.endpoint); // só apaga se for dela mesma
     checar(await db.from("push_inscricoes").insert({
       user_id: user.id,
-      loja_id: perfil.papel === "master" ? null : perfil.loja_id,
+      loja_id: loja.id,
       endpoint: j.endpoint, p256dh: j.keys.p256dh, auth: j.keys.auth,
       aparelho: navigator.userAgent.slice(0, 150),
     }));
@@ -831,7 +853,7 @@ async function montarLojas() {
   if (perfil?.papel !== "master") return;
   let perfis = [], convites = [];
   await ocupado("Carregando lojas...", async () => {
-    perfis = checar(await db.from("perfis").select("user_id,email,papel,loja_id"));
+    perfis = checar(await db.from("perfis").select("user_id,email,nome,papel,loja_id"));
     convites = checar(await db.from("convites").select("email,papel,loja_id"));
   });
   const base = `${location.origin}${location.pathname.replace(/admin\.html$/, "")}index.html?loja=`;
@@ -846,7 +868,7 @@ async function montarLojas() {
         </div>
         <div class="link"><a href="${base}${encodeURIComponent(l.slug)}" target="_blank" rel="noopener">${base}${escaparHtml(l.slug)}</a></div>
         <ul class="pessoas">
-          ${adms.map(p => `<li><span>👤 ${escaparHtml(p.email)}</span><button data-tirar-adm="${p.user_id}" data-email="${escaparHtml(p.email)}">tirar acesso</button></li>`).join("")}
+          ${adms.map(p => `<li><span>👤 ${escaparHtml(p.email)}${p.papel === "equipe" ? ` <span class="pendente">equipe</span>` : ""}</span><button data-tirar-adm="${p.user_id}" data-email="${escaparHtml(p.email)}">tirar acesso</button></li>`).join("")}
           ${pend.map(c => `<li><span>✉️ ${escaparHtml(c.email)} <span class="pendente">aguardando criar conta</span></span><button data-tirar-convite="${escaparHtml(c.email)}">cancelar</button></li>`).join("")}
           ${!adms.length && !pend.length ? `<li class="ajuda" style="margin:0">Ninguém administra essa loja ainda.</li>` : ""}
         </ul>
@@ -1107,7 +1129,6 @@ function montarConfig() {
   $("cBusca").value = c.textoBusca || "";
   $("cAltura").value = c.alturaBanner || "media";
   $("cTroca").value = String(c.trocaBanner ?? 5);
-  $("cWhats").value = c.whatsapp;
   $("cHorarios").value = (c.horarios || []).join("\n");
   $("cTaxa").value = paraCampo(Number(c.taxaEntrega || 0));
   $("cDias").innerHTML = DIAS_CURTOS.map((d, i) =>
@@ -1123,7 +1144,6 @@ $("btnSalvarLoja").onclick = () => {
   if (!horarios.length) { avisar("Coloque pelo menos um horário de entrega"); return; }
   if (taxa != null && (isNaN(taxa) || taxa < 0)) { avisar("Taxa de entrega inválida"); return; }
   Object.assign(loja.config, {
-    whatsapp: $("cWhats").value.replace(/\D/g, ""),
     horarios,
     diasSemEntrega: [...document.querySelectorAll("#cDias input:checked")].map(i => Number(i.value)),
     taxaEntrega: taxa || 0,
@@ -1135,8 +1155,337 @@ $("btnSalvarLoja").onclick = () => {
 $("fundo").onclick = () => { if (bannerEd) fecharBanner(); else fecharEditor(); };
 document.addEventListener("keydown", ev => {
   if (ev.key !== "Escape") return;
-  if (bannerEd) fecharBanner(); else if (editando) fecharEditor();
+  if ($("menuConta").classList.contains("aberto")) fecharMenuConta();
+  else if (bannerEd) fecharBanner(); else if (editando) fecharEditor();
 });
+
+// ================= minha conta (menu da engrenagem) =================
+const ABAS_EQUIPE = [["produtos", "Produtos"], ["pedidos", "Pedidos"], ["financeiro", "Faturamento"], ["capa", "Capa da loja"], ["entrega", "Entrega"]];
+const NOMES_PAPEL = { master: "Master da plataforma", adm: "Administrador(a) da loja", equipe: "Equipe da loja" };
+const MESES = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"];
+let contaAtual = null;
+let abaAntesDaConta = null;
+
+function cuidaDaLoja() { return !!perfil && (perfil.papel === "master" || perfil.papel === "adm"); }
+function nomesAbas(abas) {
+  const n = ABAS_EQUIPE.filter(([k]) => (abas || []).includes(k)).map(([, t]) => t);
+  return n.length ? n.join(", ") : "nenhuma parte";
+}
+function papelTexto() {
+  return NOMES_PAPEL[perfil.papel] + (perfil.papel !== "master" && loja ? ` · ${loja.config.nome}` : "");
+}
+
+function abrirMenuConta() {
+  if (!perfil) return;
+  const nome = perfil.nome || perfil.email;
+  $("mcAvatar").textContent = (nome.trim()[0] || "?").toUpperCase();
+  $("mcNome").textContent = nome;
+  $("mcEmail").textContent = perfil.nome ? perfil.email : "";
+  $("mcPapel").textContent = papelTexto();
+  $("mcEquipe").classList.toggle("oculto", !cuidaDaLoja() || !loja);
+  $("mcMensalidade").classList.toggle("oculto", !cuidaDaLoja() || !loja);
+  document.querySelectorAll("#menuConta [data-conta]").forEach(b =>
+    b.classList.toggle("ativo", !$("abaConta").classList.contains("oculto") && b.dataset.conta === contaAtual));
+  $("menuConta").classList.add("aberto");
+  $("fundoConta").classList.remove("oculto");
+  $("btnConta").setAttribute("aria-expanded", "true");
+}
+function fecharMenuConta() {
+  $("menuConta").classList.remove("aberto");
+  $("fundoConta").classList.add("oculto");
+  $("btnConta").setAttribute("aria-expanded", "false");
+}
+$("btnConta").onclick = () => $("menuConta").classList.contains("aberto") ? fecharMenuConta() : abrirMenuConta();
+$("btnFecharConta").onclick = fecharMenuConta;
+$("fundoConta").onclick = fecharMenuConta;
+$("mcSair").onclick = () => { fecharMenuConta(); $("btnSair").click(); };
+$("menuConta").addEventListener("click", ev => {
+  const b = ev.target.closest("[data-conta]");
+  if (!b) return;
+  fecharMenuConta();
+  if (b.dataset.conta === "painel") voltarAoPainel(); else abrirConta(b.dataset.conta);
+});
+$("btnVoltarPainel").onclick = () => voltarAoPainel();
+
+function voltarAoPainel() {
+  const destino = abaAntesDaConta && podeAba(abaAntesDaConta) ? abaAntesDaConta : primeiraAba();
+  if (destino && loja) trocarAba(destino);
+  else avisar("Sua conta ainda não tem nenhuma parte do painel liberada.");
+}
+
+function abrirConta(qual) {
+  if ((qual === "equipe" || qual === "mensalidade") && (!cuidaDaLoja() || !loja)) qual = "dados";
+  if ($("abaConta").classList.contains("oculto")) abaAntesDaConta = document.querySelector(".abas [data-aba].ativo")?.dataset.aba || null;
+  contaAtual = qual;
+  document.querySelectorAll(".abas [data-aba]").forEach(x => x.classList.remove("ativo"));
+  ABAS_PAINEL.forEach(a => $("aba" + a[0].toUpperCase() + a.slice(1)).classList.add("oculto"));
+  $("abaConta").classList.remove("oculto");
+  ["dados", "senha", "equipe", "mensalidade"].forEach(s =>
+    $("conta" + s[0].toUpperCase() + s.slice(1)).classList.toggle("oculto", s !== qual));
+  if (qual === "dados") montarMeusDados();
+  if (qual === "senha") { ["msAtual", "msNova", "msNova2"].forEach(id => $(id).value = ""); $("msUsuario").value = perfil.email; }
+  if (qual === "equipe") montarEquipe();
+  if (qual === "mensalidade") montarMensalidades();
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+// ----- meus dados -----
+function formatarTel(v) {
+  const d = String(v).replace(/\D/g, "").slice(0, 11);
+  if (d.length <= 2) return d;
+  if (d.length <= 6) return `(${d.slice(0, 2)}) ${d.slice(2)}`;
+  if (d.length <= 10) return `(${d.slice(0, 2)}) ${d.slice(2, 6)}-${d.slice(6)}`;
+  return `(${d.slice(0, 2)}) ${d.slice(2, 7)}-${d.slice(7)}`;
+}
+function montarMeusDados() {
+  $("mdNome").value = perfil.nome || "";
+  $("mdTel").value = perfil.telefone || "";
+  $("mdEmail").value = perfil.email;
+  $("mdPapel").textContent = papelTexto() + (perfil.papel === "equipe" ? ` · pode acessar: ${nomesAbas(perfil.abas)}` : "");
+}
+$("mdTel").oninput = () => { $("mdTel").value = formatarTel($("mdTel").value); };
+$("btnSalvarDados").onclick = async () => {
+  const nome = $("mdNome").value.trim(), telefone = $("mdTel").value.trim();
+  if (telefone && telefone.replace(/\D/g, "").length < 10) { avisar("Telefone com DDD"); return; }
+  const r = await ocupado("Salvando...", async () =>
+    checar(await db.from("perfis").update({ nome, telefone }).eq("user_id", perfil.user_id).select().single()));
+  if (r) { perfil = { ...perfil, ...r }; avisar("Dados salvos"); }
+};
+
+// ----- trocar senha (confere a senha atual antes) -----
+$("formSenha").addEventListener("submit", async ev => {
+  ev.preventDefault();
+  const atual = $("msAtual").value, nova = $("msNova").value;
+  if (!atual) { avisar("Digite a senha atual"); return; }
+  if (nova.length < 8) { avisar("A senha nova precisa ter pelo menos 8 caracteres"); return; }
+  if (nova !== $("msNova2").value) { avisar("As duas senhas novas não estão iguais"); return; }
+  if (nova === atual) { avisar("A senha nova é igual à atual"); return; }
+  const r = await ocupado("Trocando a senha...", async () => {
+    const { error } = await db.auth.signInWithPassword({ email: perfil.email, password: atual });
+    if (error) throw new Error(/Invalid login credentials/i.test(error.message) ? "Senha atual errada." : erroLogin(error));
+    const { error: e2 } = await db.auth.updateUser({ password: nova });
+    if (e2) throw new Error(erroLogin(e2));
+    return true;
+  });
+  if (r) { ["msAtual", "msNova", "msNova2"].forEach(id => $(id).value = ""); avisar("Senha trocada"); }
+});
+
+// ----- equipe da loja (adm convida e escolhe o que cada um acessa) -----
+let equipe = [], convitesEquipe = [];
+function chipsAbas(marcadas) {
+  return ABAS_EQUIPE.map(([k, t]) =>
+    `<label><input type="checkbox" value="${k}" ${(marcadas || []).includes(k) ? "checked" : ""}>${t}</label>`).join("");
+}
+function quemHtml(p) {
+  return `<div class="quem"><b>${escaparHtml(p.nome || p.email)}</b>${p.nome ? `<span>${escaparHtml(p.email)}</span>` : ""}</div>`;
+}
+async function montarEquipe() {
+  if (!loja || !cuidaDaLoja()) return;
+  const lojaId = loja.id;
+  const ok = await ocupado("Carregando a equipe...", async () => {
+    equipe = checar(await db.from("perfis").select("user_id,email,nome,papel,abas").eq("loja_id", lojaId).order("criado_em"));
+    convitesEquipe = checar(await db.from("convites").select("email,nome,papel,abas").eq("loja_id", lojaId).order("criado_em"));
+    return true;
+  });
+  if (!ok || lojaId !== loja?.id) return;
+  const master = perfil.papel === "master";
+  const pessoas = equipe.map(p => p.papel === "adm"
+    ? `<div class="pessoa">${quemHtml(p)}<span class="etiqueta">Administrador(a) · acesso a tudo</span></div>`
+    : `<div class="pessoa">${quemHtml(p)}
+         <div class="permissoes" data-abas-de="${p.user_id}">${chipsAbas(p.abas)}</div>
+         <button class="link-perigo" data-tirar-equipe="${p.user_id}" data-email="${escaparHtml(p.email)}">tirar acesso</button></div>`);
+  const pendentes = convitesEquipe.map(c => `<div class="pessoa">${quemHtml(c)}
+      <span class="pendente">aguardando criar conta · ${c.papel === "equipe" ? "pode acessar: " + nomesAbas(c.abas) : "administrador(a)"}</span>
+      ${c.papel === "equipe" || master ? `<button class="link-perigo" data-cancelar-convite="${escaparHtml(c.email)}">cancelar convite</button>` : ""}</div>`);
+  $("listaEquipe").innerHTML = [...pessoas, ...pendentes].join("") || `<div class="ajuda" style="margin:0">Ninguém ainda.</div>`;
+}
+$("listaEquipe").addEventListener("change", async ev => {
+  const caixa = ev.target.closest("[data-abas-de]");
+  if (!caixa) return;
+  const abas = [...caixa.querySelectorAll("input:checked")].map(i => i.value);
+  const r = await ocupado("Salvando...", async () => {
+    checar(await db.from("perfis").update({ abas }).eq("user_id", caixa.dataset.abasDe).select("user_id").single());
+    return true;
+  });
+  if (r) avisar(abas.length ? "Acesso atualizado" : "Acesso atualizado: essa pessoa não vê nenhuma parte do painel");
+  else montarEquipe();
+});
+$("listaEquipe").addEventListener("click", async ev => {
+  const tirar = ev.target.closest("[data-tirar-equipe]");
+  const cancelar = ev.target.closest("[data-cancelar-convite]");
+  if (tirar) {
+    if (!confirm(`Tirar o acesso de ${tirar.dataset.email} ao painel da loja?`)) return;
+    const r = await ocupado("Salvando...", async () => {
+      checar(await db.from("perfis").delete().eq("user_id", tirar.dataset.tirarEquipe).select("user_id").single());
+      return true;
+    });
+    if (r) { avisar("Acesso retirado"); montarEquipe(); }
+  } else if (cancelar) {
+    const r = await ocupado("Salvando...", async () => {
+      checar(await db.from("convites").delete().eq("email", cancelar.dataset.cancelarConvite));
+      return true;
+    });
+    if (r) { avisar("Convite cancelado"); montarEquipe(); }
+  }
+});
+$("eqAbas").innerHTML = chipsAbas(["pedidos"]);
+$("btnConvidarEquipe").onclick = async () => {
+  const nome = $("eqNome").value.trim();
+  const email = $("eqEmail").value.trim().toLowerCase();
+  const abas = [...$("eqAbas").querySelectorAll("input:checked")].map(i => i.value);
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { avisar("Digite um e-mail válido"); return; }
+  if (email === perfil.email) { avisar("Esse é o seu próprio e-mail"); return; }
+  if (!abas.length) { avisar("Marque pelo menos uma parte que a pessoa pode acessar"); return; }
+  if (equipe.some(p => p.email === email)) { avisar("Essa pessoa já está na equipe"); return; }
+  const r = await ocupado("Liberando...", async () => {
+    const { error } = await db.from("convites").insert({ email, nome, papel: "equipe", loja_id: loja.id, abas });
+    if (error && /duplicate key|23505/i.test(error.message + error.code)) throw new Error("Esse e-mail já tem um convite esperando.");
+    if (error) throw error;
+    return true;
+  });
+  if (r) {
+    $("eqNome").value = ""; $("eqEmail").value = ""; $("eqAbas").innerHTML = chipsAbas(["pedidos"]);
+    avisar("Acesso liberado: a pessoa cria a conta no painel com esse e-mail");
+    montarEquipe();
+  }
+};
+
+// ----- mensalidade da plataforma (master lança; adm da loja vê e baixa nota/boleto) -----
+let mensalidades = [];
+function mesRef(iso) { const [a, m] = String(iso).split("-"); return `${MESES[Number(m) - 1]}/${a}`; }
+function dataIsoBr(iso) { return String(iso).slice(0, 10).split("-").reverse().join("/"); }
+function situacaoMensal(m) {
+  if (m.status === "paga") return ["paga", "Paga"];
+  if (m.status === "cancelada") return ["cancelado", "Cancelada"];
+  if (m.vencimento < isoLocal(new Date())) return ["vencida", "Vencida"];
+  return ["aberta", "Em aberto"];
+}
+function sugerirCobranca() {
+  const hoje = new Date();
+  $("mmMes").value = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, "0")}`;
+  $("mmVenc").value = isoLocal(new Date(hoje.getFullYear(), hoje.getMonth() + 1, 10));
+}
+async function montarMensalidades() {
+  if (!loja || !cuidaDaLoja()) return;
+  const master = perfil.papel === "master";
+  const lojaId = loja.id;
+  $("formMensal").classList.toggle("oculto", !master);
+  $("mmPara").textContent = `Cobrança para a loja ${loja.config.nome}. A loja vê na Mensalidade do painel dela.`;
+  if (master && !$("mmMes").value) sugerirCobranca();
+  $("mmAjuda").textContent = master
+    ? `Cobranças lançadas para ${loja.config.nome}.`
+    : "Aqui ficam as cobranças da plataforma, com a nota fiscal e o boleto de cada mês.";
+  const ok = await ocupado("Carregando...", async () => {
+    mensalidades = checar(await db.from("mensalidades").select("*").eq("loja_id", lojaId)
+      .order("referencia", { ascending: false }).order("criada_em", { ascending: false }));
+    return true;
+  });
+  if (!ok || lojaId !== loja?.id) return;
+  const NOMES_STATUS = { aberta: "Em aberto", paga: "Paga", cancelada: "Cancelada" };
+  $("listaMensal").innerHTML = mensalidades.map(m => {
+    const [classe, texto] = situacaoMensal(m);
+    return `<div class="mensal">
+      <div class="cab"><b>${mesRef(m.referencia)}</b><span class="status ${classe}">${texto}</span></div>
+      <div class="valor-mensal">${real(Number(m.valor))}</div>
+      <div class="det">Vencimento ${dataIsoBr(m.vencimento)}${m.paga_em ? ` · paga em ${new Date(m.paga_em).toLocaleDateString("pt-BR")}` : ""}</div>
+      ${m.obs ? `<div class="det">${escaparHtml(m.obs)}</div>` : ""}
+      <div class="acoes-pedido">
+        ${m.nota ? `<button class="btn-secundario" data-arquivo="${escaparHtml(m.nota)}">📄 Nota fiscal</button>` : ""}
+        ${m.boleto ? `<button class="btn-secundario" data-arquivo="${escaparHtml(m.boleto)}">🧾 Boleto</button>` : ""}
+        ${master ? `<select data-status-mensal="${m.id}" aria-label="Situação">${Object.entries(NOMES_STATUS).map(([v, n]) =>
+          `<option value="${v}" ${m.status === v ? "selected" : ""}>${n}</option>`).join("")}</select>
+          <button class="link-perigo" data-apagar-mensal="${m.id}">apagar</button>` : ""}
+      </div></div>`;
+  }).join("") || `<div class="vazio" style="padding:20px 0">Nenhuma cobrança ainda.</div>`;
+  atualizarPontoConta();
+}
+$("listaMensal").addEventListener("click", async ev => {
+  const arq = ev.target.closest("[data-arquivo]");
+  const apagar = ev.target.closest("[data-apagar-mensal]");
+  if (arq) {
+    // abre a janela já no toque (senão o navegador bloqueia) e depois coloca o link temporário
+    const janela = window.open("", "_blank");
+    const { data, error } = await db.storage.from("cobrancas").createSignedUrl(arq.dataset.arquivo, 300);
+    if (error || !data?.signedUrl) { if (janela) janela.close(); avisar("Não deu pra abrir o arquivo agora"); return; }
+    if (janela) janela.location = data.signedUrl; else location.href = data.signedUrl;
+  } else if (apagar) {
+    const m = mensalidades.find(x => x.id === apagar.dataset.apagarMensal);
+    if (!m || !confirm(`Apagar a cobrança de ${mesRef(m.referencia)}? A nota e o boleto anexados também são apagados.`)) return;
+    const r = await ocupado("Apagando...", async () => {
+      checar(await db.from("mensalidades").delete().eq("id", m.id));
+      const arquivos = [m.nota, m.boleto].filter(Boolean);
+      if (arquivos.length) await db.storage.from("cobrancas").remove(arquivos);
+      return true;
+    });
+    if (r) { avisar("Cobrança apagada"); montarMensalidades(); }
+  }
+});
+$("listaMensal").addEventListener("change", async ev => {
+  const s = ev.target.closest("[data-status-mensal]");
+  if (!s) return;
+  const r = await ocupado("Salvando...", async () => {
+    checar(await db.from("mensalidades").update({ status: s.value }).eq("id", s.dataset.statusMensal));
+    return true;
+  });
+  if (r) avisar(s.value === "paga" ? "Marcada como paga" : "Cobrança atualizada");
+  montarMensalidades();
+});
+const TIPOS_COBRANCA = ["application/pdf", "image/jpeg", "image/png"];
+async function enviarArquivoCobranca(arquivo, tipo) {
+  const ext = { "application/pdf": "pdf", "image/jpeg": "jpg", "image/png": "png" }[arquivo.type];
+  const caminho = `${loja.id}/${crypto.randomUUID()}-${tipo}.${ext}`;
+  checar(await db.storage.from("cobrancas").upload(caminho, arquivo, { contentType: arquivo.type, upsert: false }));
+  return caminho;
+}
+$("btnLancarMensal").onclick = async () => {
+  const mes = $("mmMes").value, venc = $("mmVenc").value, valor = numero($("mmValor").value);
+  const nota = $("mmNota").files[0], boleto = $("mmBoleto").files[0];
+  if (!/^\d{4}-\d{2}$/.test(mes)) { avisar("Escolha o mês cobrado"); return; }
+  if (!valor || isNaN(valor) || valor <= 0) { avisar("Valor inválido"); return; }
+  if (!venc) { avisar("Escolha o vencimento"); return; }
+  for (const f of [nota, boleto].filter(Boolean)) {
+    if (!TIPOS_COBRANCA.includes(f.type)) { avisar("Envie a nota e o boleto em PDF, JPG ou PNG"); return; }
+    if (f.size > 10 * 1024 * 1024) { avisar("Arquivo maior que 10 MB"); return; }
+  }
+  const nomeLoja = loja.config.nome;
+  const r = await ocupado("Lançando a cobrança...", async () => {
+    const enviados = [];
+    try {
+      const caminhoNota = nota ? await enviarArquivoCobranca(nota, "nota") : "";
+      if (caminhoNota) enviados.push(caminhoNota);
+      const caminhoBoleto = boleto ? await enviarArquivoCobranca(boleto, "boleto") : "";
+      if (caminhoBoleto) enviados.push(caminhoBoleto);
+      checar(await db.from("mensalidades").insert({
+        loja_id: loja.id, referencia: mes + "-01", valor, vencimento: venc,
+        nota: caminhoNota, boleto: caminhoBoleto, obs: $("mmObs").value.trim(),
+      }));
+    } catch (e) {
+      if (enviados.length) await db.storage.from("cobrancas").remove(enviados); // não deixa arquivo solto
+      throw e;
+    }
+    return true;
+  });
+  if (r) {
+    $("mmValor").value = ""; $("mmObs").value = ""; $("mmNota").value = ""; $("mmBoleto").value = "";
+    sugerirCobranca();
+    avisar(`Cobrança lançada para ${nomeLoja}`);
+    montarMensalidades();
+  }
+};
+
+// bolinha na engrenagem quando o adm tem mensalidade em aberto
+async function atualizarPontoConta() {
+  let n = 0;
+  if (perfil?.papel === "adm" && loja) {
+    const { count } = await db.from("mensalidades").select("id", { count: "exact", head: true })
+      .eq("loja_id", loja.id).eq("status", "aberta");
+    n = count || 0;
+  }
+  $("pontoConta").classList.toggle("oculto", !n);
+  $("contMensal").textContent = n;
+  $("contMensal").classList.toggle("oculto", !n);
+  $("btnConta").title = n ? `Minha conta · ${n} mensalidade(s) em aberto` : "Minha conta";
+}
 
 // ================= início =================
 let recuperandoSenha = false;

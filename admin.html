@@ -145,6 +145,42 @@
     .linha-convite input { flex: 1; min-width: 0; border: 1px solid var(--borda); border-radius: 10px; padding: 8px 10px; }
     .linha-convite button { white-space: nowrap; padding: 8px 12px; }
     .chave { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; }
+    /* menu da engrenagem (minha conta) */
+    .btn-conta { position: relative; border: 0; background: rgba(255,255,255,.18); color: #fff; width: 38px; height: 38px; border-radius: 50%; font-size: 19px; line-height: 1; display: grid; place-items: center; cursor: pointer; }
+    .btn-conta:hover { background: rgba(255,255,255,.3); }
+    .btn-conta .ponto { position: absolute; top: 2px; right: 2px; width: 10px; height: 10px; border-radius: 50%; background: var(--laranja); border: 2px solid var(--verde); }
+    .menu-conta { position: fixed; top: 0; bottom: 0; left: 0; z-index: 60; width: min(300px, 86vw); background: #fff; box-shadow: 4px 0 24px rgba(0,0,0,.18); transform: translateX(-105%); visibility: hidden; transition: transform .22s ease, visibility .22s; display: flex; flex-direction: column; padding: calc(12px + env(safe-area-inset-top)) 10px 16px; overflow-y: auto; }
+    .menu-conta.aberto { transform: none; visibility: visible; }
+    .menu-cab { display: flex; gap: 10px; align-items: flex-start; padding: 6px 6px 14px; border-bottom: 1px solid var(--borda); margin-bottom: 8px; }
+    .menu-cab .avatar { width: 42px; height: 42px; border-radius: 50%; background: var(--verde-claro); display: grid; place-items: center; font-weight: 800; color: var(--verde-escuro); flex-shrink: 0; }
+    .menu-cab .quem { flex: 1; min-width: 0; }
+    .menu-cab .quem b { display: block; overflow-wrap: anywhere; }
+    .menu-cab .sub { font-size: 13px; color: var(--texto-suave); overflow-wrap: anywhere; }
+    .menu-conta > button { display: flex; align-items: center; gap: 10px; width: 100%; border: 0; background: none; text-align: left; padding: 12px 10px; border-radius: 10px; font-size: 15px; font-weight: 600; color: var(--texto); cursor: pointer; }
+    .menu-conta > button:hover, .menu-conta > button.ativo { background: var(--verde-claro); color: var(--verde-escuro); }
+    .menu-sep { border-top: 1px solid var(--borda); margin: 8px 0; }
+    .voltar-painel { border: 0; background: none; color: var(--verde-escuro); font-weight: 600; padding: 4px 0 12px; cursor: pointer; }
+    .permissoes { display: flex; flex-wrap: wrap; gap: 6px; }
+    .permissoes label { border: 1px solid var(--borda); border-radius: 8px; padding: 6px 10px; font-size: 13px; cursor: pointer; background: #fff; }
+    .permissoes label:has(input:checked) { background: var(--verde); color: #fff; border-color: var(--verde); }
+    .permissoes input { position: absolute; opacity: 0; pointer-events: none; }
+    .lista-equipe { display: flex; flex-direction: column; gap: 10px; }
+    .pessoa { border: 1px solid var(--borda); border-radius: 12px; padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
+    .pessoa .quem { display: flex; flex-direction: column; gap: 2px; font-size: 14px; }
+    .pessoa .quem span { color: var(--texto-suave); font-size: 13px; overflow-wrap: anywhere; }
+    .etiqueta { font-size: 12px; font-weight: 700; color: var(--verde-escuro); background: var(--verde-claro); border-radius: 999px; padding: 2px 9px; align-self: flex-start; }
+    .link-perigo { border: 0; background: none; color: var(--erro); font-size: 13px; font-weight: 600; padding: 2px 0; align-self: flex-start; cursor: pointer; }
+    .mensal { background: #fff; border-radius: 12px; box-shadow: var(--sombra); padding: 12px 14px; display: flex; flex-direction: column; gap: 6px; }
+    .mensal .cab { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+    .mensal .cab b { font-size: 16px; text-transform: capitalize; }
+    .mensal .valor-mensal { font-size: 20px; font-weight: 800; font-variant-numeric: tabular-nums; }
+    .mensal .det { font-size: 14px; color: var(--texto-suave); }
+    .mensal select { border: 1px solid var(--borda); border-radius: 8px; padding: 6px 8px; background: #fff; font-weight: 600; }
+    .mensal .btn-secundario { padding: 8px 12px; }
+    .status.aberta { background: var(--laranja); color: #fff; }
+    .status.vencida { background: var(--erro); color: #fff; }
+    .status.paga { background: var(--verde-claro); color: var(--verde-escuro); }
+    .arquivo-campo input[type=file] { font-size: 14px; }
     /* tela de "salvando" */
     .carregando { position: fixed; inset: 0; z-index: 80; background: rgba(247,245,240,.75); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; font-weight: 600; }
     .girando { width: 36px; height: 36px; border-radius: 50%; border: 4px solid var(--verde-claro); border-top-color: var(--verde); animation: gira .8s linear infinite; }
@@ -153,7 +189,7 @@
 </head>
 <body>
   <div class="topo">
-    <div class="marca"><span>⚙️</span><span>Painel da loja</span></div>
+    <div class="marca"><button class="btn-conta oculto" id="btnConta" aria-label="Minha conta" title="Minha conta" aria-controls="menuConta" aria-expanded="false">⚙️<span class="ponto oculto" id="pontoConta"></span></button><span id="marcaIcone">⚙️</span><span>Painel da loja</span></div>
     <button class="btn-instalar oculto" id="btnInstalar">📲 Instalar</button>
     <a href="index.html" id="linkVerLoja" class="oculto" target="_blank" rel="noopener">Ver loja</a>
     <button class="btn-sair oculto" id="btnSair">Sair</button>
@@ -340,12 +376,77 @@
     <section id="abaEntrega" class="oculto">
       <div class="secao-form">
         <h3>Pedidos e entrega</h3>
-        <div class="campo"><label for="cWhats">WhatsApp que recebe os pedidos (com DDD)</label><input id="cWhats" inputmode="tel" placeholder="54 99999-9999"><span class="msg">O pedido chega pronto nesse número</span></div>
         <div class="campo"><label for="cHorarios">Horários de entrega (um por linha)</label><textarea id="cHorarios" rows="4"></textarea></div>
         <div class="campo"><label>Dias SEM entrega</label><div class="dias" id="cDias"></div></div>
         <div class="campo"><label for="cTaxa">Taxa de entrega (R$, 0 = grátis)</label><input id="cTaxa" inputmode="decimal"></div>
       </div>
       <button class="btn-principal" id="btnSalvarLoja" style="width:100%">Salvar</button>
+    </section>
+
+    <!-- ===== minha conta (menu da engrenagem) ===== -->
+    <section id="abaConta" class="oculto">
+      <button class="voltar-painel" id="btnVoltarPainel">← Voltar ao painel</button>
+
+      <div id="contaDados">
+        <div class="secao-form">
+          <h3>Meus dados</h3>
+          <div class="campo"><label for="mdNome">Nome</label><input id="mdNome" autocomplete="name" maxlength="80"></div>
+          <div class="campo"><label for="mdTel">WhatsApp / telefone</label><input id="mdTel" type="tel" inputmode="tel" autocomplete="tel" placeholder="(54) 99999-9999"></div>
+          <div class="campo"><label for="mdEmail">E-mail de acesso</label><input id="mdEmail" disabled></div>
+          <p class="ajuda" id="mdPapel" style="margin:0"></p>
+        </div>
+        <button class="btn-principal" id="btnSalvarDados" style="width:100%">Salvar meus dados</button>
+      </div>
+
+      <div id="contaSenha" class="oculto">
+        <form class="secao-form" id="formSenha" novalidate>
+          <h3>Trocar senha</h3>
+          <input type="email" id="msUsuario" autocomplete="username" hidden>
+          <div class="campo"><label for="msAtual">Senha atual</label><input id="msAtual" type="password" autocomplete="current-password"></div>
+          <div class="campo"><label for="msNova">Senha nova</label><input id="msNova" type="password" autocomplete="new-password"><span class="msg">Pelo menos 8 caracteres</span></div>
+          <div class="campo"><label for="msNova2">Repita a senha nova</label><input id="msNova2" type="password" autocomplete="new-password"></div>
+          <button class="btn-principal" type="submit" style="width:100%">Salvar senha nova</button>
+        </form>
+      </div>
+
+      <div id="contaEquipe" class="oculto">
+        <div class="secao-form">
+          <h3>Equipe da loja</h3>
+          <p class="ajuda">Cada pessoa entra com o próprio e-mail e só vê as partes do painel que estiverem marcadas. Toque numa parte pra liberar ou tirar.</p>
+          <div id="listaEquipe" class="lista-equipe"></div>
+        </div>
+        <div class="secao-form">
+          <h3>Convidar pessoa</h3>
+          <div class="linha">
+            <div class="campo"><label for="eqNome">Nome</label><input id="eqNome" maxlength="80"></div>
+            <div class="campo"><label for="eqEmail">E-mail</label><input id="eqEmail" type="email" inputmode="email"></div>
+          </div>
+          <div class="campo"><label>Pode acessar</label><div class="permissoes" id="eqAbas"></div></div>
+          <button class="btn-principal" id="btnConvidarEquipe" style="width:100%">Liberar acesso</button>
+          <p class="ajuda" style="margin:8px 0 0">Depois a pessoa abre o painel, toca em <b>Criar conta</b> e usa esse mesmo e-mail.</p>
+        </div>
+      </div>
+
+      <div id="contaMensalidade" class="oculto">
+        <div class="secao-form oculto" id="formMensal">
+          <h3>Lançar cobrança</h3>
+          <p class="ajuda" id="mmPara"></p>
+          <div class="linha">
+            <div class="campo"><label for="mmMes">Mês cobrado</label><input id="mmMes" type="month"></div>
+            <div class="campo"><label for="mmValor">Valor (R$)</label><input id="mmValor" inputmode="decimal" placeholder="Ex: 99,90"></div>
+          </div>
+          <div class="campo"><label for="mmVenc">Vencimento</label><input id="mmVenc" type="date"></div>
+          <div class="campo arquivo-campo"><label for="mmNota">Nota fiscal (PDF ou foto)</label><input id="mmNota" type="file" accept="application/pdf,image/jpeg,image/png"></div>
+          <div class="campo arquivo-campo"><label for="mmBoleto">Boleto (opcional)</label><input id="mmBoleto" type="file" accept="application/pdf,image/jpeg,image/png"></div>
+          <div class="campo"><label for="mmObs">Observação (opcional)</label><input id="mmObs" maxlength="200" placeholder="Ex: Pix: chave tal"></div>
+          <button class="btn-principal" id="btnLancarMensal" style="width:100%">Lançar cobrança</button>
+        </div>
+        <div class="secao-form">
+          <h3>Mensalidade da plataforma</h3>
+          <p class="ajuda" id="mmAjuda">Aqui ficam as cobranças da plataforma, com a nota fiscal e o boleto de cada mês.</p>
+          <div id="listaMensal" class="lista-adm"></div>
+        </div>
+      </div>
     </section>
     </div><!-- /areaPainel -->
   </main>
@@ -452,6 +553,23 @@
       <button class="btn-perigo" id="btnExcluirBanner">Excluir banner</button>
     </footer>
   </aside>
+
+  <!-- menu da engrenagem -->
+  <div class="fundo-escuro oculto" id="fundoConta" style="z-index:55"></div>
+  <nav class="menu-conta" id="menuConta" aria-label="Minha conta">
+    <div class="menu-cab">
+      <div class="avatar" id="mcAvatar">?</div>
+      <div class="quem"><b id="mcNome"></b><div class="sub" id="mcEmail"></div><div class="sub" id="mcPapel"></div></div>
+      <button class="btn-icone" id="btnFecharConta" aria-label="Fechar">✕</button>
+    </div>
+    <button data-conta="dados">👤 Meus dados</button>
+    <button data-conta="senha">🔑 Trocar senha</button>
+    <button data-conta="equipe" id="mcEquipe">👥 Equipe da loja</button>
+    <button data-conta="mensalidade" id="mcMensalidade">🧾 Mensalidade <span class="contador oculto" id="contMensal"></span></button>
+    <div class="menu-sep"></div>
+    <button data-conta="painel">🏪 Voltar ao painel</button>
+    <button id="mcSair">↩ Sair</button>
+  </nav>
 
   <div class="aviso" id="aviso"></div>
 
