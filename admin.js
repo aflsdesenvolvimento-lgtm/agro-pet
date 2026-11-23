@@ -420,7 +420,7 @@ function montarPedidos() {
         <div class="det">Pedido ${escaparHtml(p.numero)} · feito ${quando}${tel ? ` · <a href="https://wa.me/55${tel.replace(/^55/, "")}" target="_blank" rel="noopener">WhatsApp ${escaparHtml(c.telefone)}</a>` : ""}</div>
         <ul class="itens">${(p.itens || []).map(i => `<li>${i.qtd}x ${escaparHtml(i.nome)} ${i.detalhe ? `(${escaparHtml(i.detalhe)})` : ""} — ${real(i.preco * i.qtd)}</li>`).join("")}</ul>
         <div class="det">🚚 <b>${dataEntrega}</b>, ${escaparHtml(e.horario || "")} · ${escaparHtml(e.rua || "")}, ${escaparHtml(e.numero || "")}${e.complemento ? " - " + escaparHtml(e.complemento) : ""} - ${escaparHtml(e.bairro || "")}, ${escaparHtml(e.cidade || "")}/${escaparHtml(e.uf || "")}</div>
-        <div class="det">📍 ${escaparHtml(e.referencia || "")}</div>
+        ${e.referencia ? `<div class="det">📍 ${escaparHtml(e.referencia)}</div>` : ""}
         <div class="det">💳 ${escaparHtml(p.pagamento)}${p.troco ? ` (troco para ${escaparHtml(p.troco)})` : ""}${p.obs ? ` · 📝 ${escaparHtml(p.obs)}` : ""}</div>
         <div class="rodape">
           <b>Total ${real(p.total)}</b>
@@ -676,7 +676,7 @@ $("btnBaixarFin").onclick = () => {
   const csv = "﻿" + linhas.map(l => l.map(cel).join(";")).join("\r\n");
   const a = document.createElement("a");
   a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
-  a.download = `financeiro_${$("finEscopo").value === "todas" ? "todas-lojas" : loja.slug}_${finPeriodoTxt.replace(/\//g, "-").replace(/ a /, "_a_")}.csv`;
+  a.download = `faturamento_${$("finEscopo").value === "todas" ? "todas-lojas" : loja.slug}_${finPeriodoTxt.replace(/\//g, "-").replace(/ a /, "_a_")}.csv`;
   a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 5000);
 };

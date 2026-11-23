@@ -313,7 +313,7 @@ function limparErros() {
 function validar() {
   limparErros();
   const erros = [];
-  const obrig = { fNome: "Informe seu nome", fRua: "Informe a rua", fNumero: "Informe o número", fBairro: "Informe o bairro", fCidade: "Informe a cidade", fUf: "UF", fRef: "Ajude o entregador com um ponto de referência" };
+  const obrig = { fNome: "Informe seu nome", fRua: "Informe a rua", fNumero: "Informe o número", fBairro: "Informe o bairro", fCidade: "Informe a cidade", fUf: "UF" };
   for (const [id, texto] of Object.entries(obrig)) if (!$(id).value.trim()) { marcarErro(id, texto); erros.push(id); }
   if ($("fTel").value.replace(/\D/g, "").length < 10) { marcarErro("fTel", "Telefone com DDD"); erros.push("fTel"); }
   if ($("fCep").value.replace(/\D/g, "").length !== 8) { marcarErro("fCep", "CEP com 8 números"); erros.push("fCep"); }
@@ -354,7 +354,7 @@ function montarMensagem(pedido) {
     ``,
     `*Entrega:* ${dataTxt}, das ${e.horario.replace(" - ", " às ")}`,
     `*Endereço:* ${e.rua}, ${e.numero}${e.complemento ? " - " + e.complemento : ""} - ${e.bairro}, ${e.cidade}/${e.uf} - CEP ${e.cep}`,
-    `*Referência:* ${e.referencia}`,
+    ...(e.referencia ? [`*Referência:* ${e.referencia}`] : []),
     ``,
     `*Pagamento:* ${pedido.pagamento}${pedido.troco ? ` (troco para ${trocoTxt(pedido.troco)})` : ""}`,
     pedido.obs ? `*Obs:* ${pedido.obs}` : null,
