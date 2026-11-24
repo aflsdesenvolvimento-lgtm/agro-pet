@@ -1160,7 +1160,7 @@ document.addEventListener("keydown", ev => {
 });
 
 // ================= minha conta (menu da engrenagem) =================
-const ABAS_EQUIPE = [["produtos", "Produtos"], ["pedidos", "Pedidos"], ["financeiro", "Faturamento"], ["capa", "Capa da loja"], ["entrega", "Entrega"]];
+const ABAS_EQUIPE = [["produtos", "Produtos"], ["pedidos", "Pedidos"], ["financeiro", "Faturamento"], ["capa", "Identidade"], ["entrega", "Entrega"]];
 const NOMES_PAPEL = { master: "Master da plataforma", adm: "Administrador(a) da loja", equipe: "Equipe da loja" };
 const MESES = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"];
 let contaAtual = null;
