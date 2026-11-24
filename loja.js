@@ -2,7 +2,7 @@
 
 const SLUG = slugAtual();
 const CHAVE_CARRINHO = "agropet_carrinho_" + SLUG; // cada loja tem o seu carrinho
-const ANTECEDENCIA_MIN = 60; // minutos de folga pra um horário de hoje ainda valer
+const ANTECEDENCIA_MIN = 0; // folga (min) antes do FIM da faixa de hoje; 0 = vale até a faixa acabar
 
 // começa com a cópia guardada (abre na hora, até sem internet) e depois atualiza pelo banco
 let loja = vitrineEmCache(SLUG) || { id: null, slug: SLUG, config: { ...copia(CONFIG_PADRAO), nome: "" }, produtos: [] };
@@ -221,14 +221,17 @@ function hojeISO() {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 function dataDeISO(iso) { const [a, m, d] = iso.split("-").map(Number); return new Date(a, m - 1, d); }
-function minutosDoInicio(faixa) {
-  const m = String(faixa).match(/(\d{1,2}):(\d{2})/);
+// fim da faixa "13:30 - 18:00" = 18:00 (se a faixa tiver um horário só, usa ele)
+function minutosDoFim(faixa) {
+  const horas = [...String(faixa).matchAll(/(\d{1,2}):(\d{2})/g)].slice(0, 2);
+  const m = horas[horas.length - 1];
   return m ? Number(m[1]) * 60 + Number(m[2]) : 0;
 }
+// hoje: dá pra escolher a faixa que já começou, desde que ainda dê tempo de entregar antes dela acabar
 function horarioDisponivel(dataIso, faixa) {
   if (dataIso !== hojeISO()) return true;
   const agora = new Date();
-  return minutosDoInicio(faixa) - (agora.getHours() * 60 + agora.getMinutes()) >= ANTECEDENCIA_MIN;
+  return minutosDoFim(faixa) - (agora.getHours() * 60 + agora.getMinutes()) > ANTECEDENCIA_MIN;
 }
 function diaFechado(dataIso) {
   return (loja.config.diasSemEntrega || []).includes(dataDeISO(dataIso).getDay());
