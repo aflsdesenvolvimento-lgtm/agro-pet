@@ -162,6 +162,7 @@ $("btnSair").onclick = async () => {
   await db.auth.signOut();
   perfil = null; loja = null; lojas = [];
   $("pontoConta").classList.add("oculto");
+  pararVigia();
   mostrarLogin("login", "Você saiu do painel.", "ok");
 };
 $("btnTentarDeNovo").onclick = () => entrar();
@@ -231,6 +232,7 @@ async function abrirLoja(id) {
   montarLista();
   montarConfig();
   if (podeAba("pedidos")) carregarPedidos(true);
+  vigiarPedidos();
   if (!$("abaFinanceiro").classList.contains("oculto")) carregarFinanceiro();
   // master trocou de loja com a Equipe/Mensalidade aberta: recarrega pra loja nova
   if (!$("abaConta").classList.contains("oculto") && (contaAtual === "equipe" || contaAtual === "mensalidade")) abrirConta(contaAtual);
@@ -414,6 +416,7 @@ async function carregarPedidos(silencioso = false) {
   if (!loja) return;
   const buscar = async () => {
     pedidos = checar(await db.from("pedidos").select("*").eq("loja_id", loja.id).order("criado_em", { ascending: false }).limit(200));
+    pedidos.forEach(p => pedidosVistos.add(p.id));
     return true;
   };
   if (silencioso) { try { await buscar(); } catch (e) { console.warn(e); } }
@@ -1242,7 +1245,31 @@ function montarMeusDados() {
   $("mdTel").value = perfil.telefone || "";
   $("mdEmail").value = perfil.email;
   $("mdPapel").textContent = papelTexto() + (perfil.papel === "equipe" ? ` · pode acessar: ${nomesAbas(perfil.abas)}` : "");
+  // e-mail de pedido: só pra quem cuida dos pedidos de uma loja
+  $("blocoAvisoEmail").classList.toggle("oculto", perfil.papel === "master" || !podeAba("pedidos"));
+  $("mdAvisoEmail").checked = perfil.aviso_email !== false;
 }
+$("mdAvisoEmail").onchange = async () => {
+  const aviso_email = $("mdAvisoEmail").checked;
+  const r = await ocupado("Salvando...", async () =>
+    checar(await db.from("perfis").update({ aviso_email }).eq("user_id", perfil.user_id).select().single()));
+  if (r) { perfil = { ...perfil, ...r }; avisar(aviso_email ? "Você vai receber e-mail a cada pedido" : "E-mail de pedido desligado"); }
+  else $("mdAvisoEmail").checked = !aviso_email;
+};
+$("btnTesteEmail").onclick = async () => {
+  const r = await ocupado("Mandando e-mail de teste...", async () => {
+    const { data: { session } } = await db.auth.getSession();
+    const resp = await fetch(FUNC_AVISO, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: "Bearer " + session.access_token },
+      body: JSON.stringify({ teste_email: true }),
+    });
+    const j = await resp.json().catch(() => ({}));
+    if (!resp.ok) throw new Error(j.erro || "Não deu pra mandar o e-mail agora.");
+    return true;
+  });
+  if (r) avisar(`E-mail de teste enviado para ${perfil.email}. Olhe também o spam.`);
+};
 $("mdTel").oninput = () => { $("mdTel").value = formatarTel($("mdTel").value); };
 $("btnSalvarDados").onclick = async () => {
   const nome = $("mdNome").value.trim(), telefone = $("mdTel").value.trim();
@@ -1486,6 +1513,94 @@ async function atualizarPontoConta() {
   $("contMensal").classList.toggle("oculto", !n);
   $("btnConta").title = n ? `Minha conta · ${n} mensalidade(s) em aberto` : "Minha conta";
 }
+
+// ================= alerta de pedido novo com o painel aberto =================
+// O pedido chega na hora pelo "tempo real" do Supabase; a cada 60 s uma conferência de reserva
+// pega o que tiver escapado (internet caiu, aba dormiu). Toca som, vibra e mostra um alerta até alguém ver.
+let pedidosVistos = new Set();
+let canalPedidos = null, vigiaLoja = null, alertaQtd = 0, timerSom = null, somCtx = null;
+const TITULO_PAGINA = document.title;
+
+function prepararSom() {
+  try {
+    if (!somCtx) somCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (somCtx.state === "suspended") somCtx.resume();
+  } catch (e) { /* sem som neste navegador: o alerta na tela continua */ }
+}
+// o navegador só libera som depois de um toque na página
+["pointerdown", "keydown"].forEach(ev => document.addEventListener(ev, prepararSom, { passive: true }));
+
+function tocarSom() {
+  if (!somCtx || somCtx.state !== "running") return;
+  const t0 = somCtx.currentTime;
+  [[0, 880], [0.22, 880], [0.44, 1175]].forEach(([d, freq]) => {
+    const o = somCtx.createOscillator(), g = somCtx.createGain();
+    o.type = "sine"; o.frequency.value = freq;
+    g.gain.setValueAtTime(0.0001, t0 + d);
+    g.gain.exponentialRampToValueAtTime(0.35, t0 + d + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + d + 0.2);
+    o.connect(g).connect(somCtx.destination);
+    o.start(t0 + d); o.stop(t0 + d + 0.22);
+  });
+}
+
+function mostrarAlertaPedido(p) {
+  alertaQtd++;
+  $("alertaTitulo").textContent = alertaQtd > 1 ? `🛒 ${alertaQtd} pedidos novos!` : "🛒 Pedido novo!";
+  $("alertaDetalhe").textContent = `${p.cliente?.nome || "Cliente"} · ${real(Number(p.total) || 0)}`;
+  $("alertaPedido").classList.remove("oculto");
+  document.title = `(${alertaQtd}) Pedido novo! · ${TITULO_PAGINA}`;
+  tocarSom();
+  try { navigator.vibrate?.([200, 100, 200]); } catch (e) {}
+  clearInterval(timerSom);
+  timerSom = setInterval(tocarSom, 20000); // repete o som até alguém ver
+  carregarPedidos(true);
+}
+function dispensarAlerta(irParaPedidos) {
+  alertaQtd = 0;
+  clearInterval(timerSom); timerSom = null;
+  $("alertaPedido").classList.add("oculto");
+  document.title = TITULO_PAGINA;
+  if (irParaPedidos && podeAba("pedidos")) { trocarAba("pedidos"); window.scrollTo({ top: 0, behavior: "smooth" }); }
+}
+$("btnVerAlerta").onclick = () => dispensarAlerta(true);
+$("btnFecharAlerta").onclick = () => dispensarAlerta(false);
+
+function pedidoChegou(p) {
+  if (!p || !loja || p.loja_id !== loja.id || p.status !== "novo" || pedidosVistos.has(p.id)) return;
+  pedidosVistos.add(p.id);
+  mostrarAlertaPedido(p);
+}
+
+async function conferirNovos(semAlerta = false) {
+  if (!loja || !podeAba("pedidos")) return;
+  const lojaId = loja.id;
+  const { data, error } = await db.from("pedidos").select("id,loja_id,status,cliente,total")
+    .eq("loja_id", lojaId).eq("status", "novo").order("criado_em", { ascending: false }).limit(50);
+  if (error || lojaId !== loja?.id) return;
+  (data || []).forEach(p => semAlerta ? pedidosVistos.add(p.id) : pedidoChegou(p));
+}
+
+function pararVigia() {
+  if (canalPedidos) { db.removeChannel(canalPedidos); canalPedidos = null; }
+  vigiaLoja = null;
+  pedidosVistos = new Set();
+  dispensarAlerta(false);
+}
+async function vigiarPedidos() {
+  if (!loja || !podeAba("pedidos")) { pararVigia(); return; }
+  if (vigiaLoja === loja.id && canalPedidos) return;
+  pararVigia();
+  vigiaLoja = loja.id;
+  await conferirNovos(true); // o que já estava lá não toca
+  canalPedidos = db.channel("pedidos-" + vigiaLoja)
+    .on("postgres_changes", { event: "INSERT", schema: "public", table: "pedidos", filter: `loja_id=eq.${vigiaLoja}` },
+      ev => pedidoChegou(ev.new))
+    .subscribe();
+}
+// reserva: confere a cada 60 s e quando o painel volta a aparecer na tela
+setInterval(() => conferirNovos(), 60000);
+document.addEventListener("visibilitychange", () => { if (!document.hidden) conferirNovos(); });
 
 // ================= início =================
 let recuperandoSenha = false;
