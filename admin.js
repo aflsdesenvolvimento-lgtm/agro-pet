@@ -633,6 +633,8 @@ function montarFinanceiro() {
     <tbody>${pl.map(([n, v]) => `<tr><td>${escaparHtml(n)}</td><td class="num">${v.qtd}</td><td class="num">${real(v.valor)}</td></tr>`).join("")}</tbody>`
     : `<tbody><tr><td>Nenhum produto entregue no período.</td></tr></tbody>`;
 
+  montarFrete(r);
+
   // a receber
   const nomeLoja = id => lojas.find(l => l.id === id)?.config.nome || "";
   $("finReceber").innerHTML = r.listaReceber.length ? r.listaReceber.map(p => `
@@ -643,6 +645,51 @@ function montarFinanceiro() {
       </div>
       <button class="btn-secundario" data-pago-rapido="${p.id}" style="padding:8px 12px">💰 Marcar pago</button>
     </div>`).join("") : `<div class="vazio" style="padding:12px 0">Nada a receber nesse período. 👍</div>`;
+}
+
+// frete: mesma base dos cartões de cima (cobrado = entregues; recebido = pagos)
+function montarFrete(r) {
+  const frete = p => Number(p.taxa || 0);
+  const soma = (l, f) => l.reduce((s, p) => s + f(p), 0);
+  const pagos = finPedidos.filter(p => p.status !== "cancelado" && p.pago);
+  const cobrado = soma(r.entregues, frete);
+  const recebido = soma(pagos, frete);
+  const comFrete = r.entregues.filter(p => frete(p) > 0).length;
+  const gratis = r.nEntregues - comFrete;
+  const kpi = (rotulo, valor, extra) => `<div class="kpi"><div class="rotulo">${rotulo}</div><div class="valor">${valor}</div><div class="extra">${extra}</div></div>`;
+  const qtd = (n, um, varios) => `${n} ${n === 1 ? um : varios}`;
+  $("finFreteKpis").innerHTML = [
+    kpi("Frete cobrado", real(cobrado), qtd(comFrete, "entrega com frete", "entregas com frete")),
+    kpi("Frete recebido", real(recebido), qtd(pagos.filter(p => frete(p) > 0).length, "pedido pago com frete", "pedidos pagos com frete")),
+    kpi("Frete médio", real(r.nEntregues ? cobrado / r.nEntregues : 0), "por pedido entregue"),
+    kpi("Entregas grátis", String(gratis), qtd(r.nEntregues, "pedido entregue", "pedidos entregues") + " no total"),
+  ].join("");
+  $("finFreteNota").textContent = r.nEntregues
+    ? `O "Vendido" lá em cima já inclui o frete. Só produtos: ${real(r.vendido - cobrado)} · frete: ${real(cobrado)} (${Math.round(r.vendido ? cobrado / r.vendido * 100 : 0)}% do vendido).`
+    : "Nenhum pedido entregue no período.";
+  const agrupar = chave => {
+    const g = {};
+    r.entregues.forEach(p => {
+      const k = chave(p);
+      g[k] = g[k] || { n: 0, total: 0 };
+      g[k].n++; g[k].total += frete(p);
+    });
+    return g;
+  };
+  const tabela = (g, ordem, rotulo) => {
+    const linhas = ordem(Object.entries(g));
+    return linhas.length ? `<thead><tr><th>${rotulo}</th><th class="num">Entregas</th><th class="num">Frete</th><th class="num">Médio</th></tr></thead>
+      <tbody>${linhas.map(([k, v]) => `<tr><td>${escaparHtml(k)}</td><td class="num">${v.n}</td><td class="num">${real(v.total)}</td><td class="num">${real(v.total / v.n)}</td></tr>`).join("")}</tbody>
+      <tfoot><tr><td>Total</td><td class="num">${r.nEntregues}</td><td class="num">${real(cobrado)}</td><td class="num">${real(r.nEntregues ? cobrado / r.nEntregues : 0)}</td></tr></tfoot>`
+      : `<tbody><tr><td>Nenhum pedido entregue no período.</td></tr></tbody>`;
+  };
+  const inicio = h => { const m = String(h).match(/(\d{1,2}):(\d{2})/); return m ? Number(m[1]) * 60 + Number(m[2]) : 9999; };
+  $("finFreteHorario").innerHTML = tabela(agrupar(p => p.entrega?.horario || "Sem horário"),
+    l => l.sort((a, b) => inicio(a[0]) - inicio(b[0])), "Horário");
+  const NOMES_DIA = ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"];
+  const diaDa = p => { const d = p.entrega?.data; if (!d) return "Sem data"; const [a, m, dd] = d.split("-").map(Number); return NOMES_DIA[new Date(a, m - 1, dd).getDay()]; };
+  $("finFreteDia").innerHTML = tabela(agrupar(diaDa),
+    l => l.sort((a, b) => NOMES_DIA.indexOf(a[0]) - NOMES_DIA.indexOf(b[0])), "Dia");
 }
 
 // gráfico de barras: valor entregue por dia (uma série, na cor da loja)

@@ -12,7 +12,7 @@
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="Painel Agro Pet">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
-  <link rel="stylesheet" href="estilo.css?v=20261125c">
+  <link rel="stylesheet" href="estilo.css?v=20261125d">
   <style>
     body { padding-bottom: 40px; }
     .topo a { color: #fff; text-decoration: none; background: rgba(255,255,255,.15); border-radius: 999px; padding: 8px 14px; font-weight: 600; }
@@ -387,6 +387,22 @@
       </div>
 
       <div class="secao-form">
+        <h3>Frete <span class="ajuda" style="font-weight:400">(taxa de entrega dos pedidos)</span></h3>
+        <div class="kpis" id="finFreteKpis" style="margin-bottom:8px"></div>
+        <p class="ajuda" id="finFreteNota" style="margin:0 0 10px"></p>
+        <div class="duas-colunas">
+          <div>
+            <h3 style="font-size:14px;margin:6px 0">Por horário de entrega</h3>
+            <div class="tabela-rolagem"><table class="tabela" id="finFreteHorario"></table></div>
+          </div>
+          <div>
+            <h3 style="font-size:14px;margin:6px 0">Por dia da semana da entrega</h3>
+            <div class="tabela-rolagem"><table class="tabela" id="finFreteDia"></table></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="secao-form">
         <h3>A receber <span class="ajuda" style="font-weight:400">(entregues e ainda não pagos)</span></h3>
         <div id="finReceber" class="lista-adm"></div>
       </div>
@@ -707,8 +723,8 @@
   <div class="aviso" id="aviso"></div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/dist/umd/supabase.min.js"></script>
-  <script src="dados.js?v=20261125c"></script>
-  <script src="admin.js?v=20261125c"></script>
-  <script src="pwa.js?v=20261125c"></script>
+  <script src="dados.js?v=20261125d"></script>
+  <script src="admin.js?v=20261125d"></script>
+  <script src="pwa.js?v=20261125d"></script>
 </body>
 </html>
