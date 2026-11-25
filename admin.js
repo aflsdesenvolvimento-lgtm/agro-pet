@@ -718,7 +718,8 @@ function montarEstoqueVendas(r) {
     const noPeriodo = finMov.filter(m => m.produto_id === p.id && m.criado_em < ateIso);
     if (l.controla || noPeriodo.length) {
       l.fim = Number(p.estoque || 0) - depois;
-      l.inicio = l.fim - noPeriodo.reduce((s, m) => s + Number(m.quantidade), 0);
+      l.inicio = l.fim - noPeriodo.filter(m => m.tipo !== "inicial").reduce((s, m) => s + Number(m.quantidade), 0);
+      l.comecou = noPeriodo.some(m => m.tipo === "inicial");
     }
     noPeriodo.forEach(m => {
       const q = Number(m.quantidade);
@@ -755,6 +756,7 @@ function montarEstoqueVendas(r) {
   ].join("");
   const notas = [];
   if (semCusto) notas.push(`${semCusto} ${semCusto === 1 ? "produto vendido não tem" : "produtos vendidos não têm"} custo informado nas entradas, por isso ${semCusto === 1 ? "fica" : "ficam"} fora do lucro.`);
+  if (lista.some(l => l.comecou)) notas.push(`Produtos marcados com * começaram a controlar o estoque no período: o "Início" deles é a primeira contagem.`);
   notas.push(`"Saiu" conta os pedidos feitos (o estoque baixa na hora do pedido); "Vendido" conta só os entregues, igual aos cartões de cima.`);
   $("finEstNota").textContent = notas.join(" ");
   const n = v => v == null ? "—" : String(v);
@@ -762,10 +764,10 @@ function montarEstoqueVendas(r) {
   $("finEstTabela").innerHTML = lista.length ? `<thead><tr><th>Produto</th><th class="num">Início</th><th class="num">Entrou</th><th class="num">Saiu</th><th class="num">Ajuste</th><th class="num">Fim</th><th class="num">Vendido</th><th class="num">Custo</th><th class="num">Lucro</th></tr></thead>
     <tbody>${lista.map(l => `<tr>
       <td>${escaparHtml(l.nome)}${l.detalhe ? ` <span class="ajuda" style="margin:0">${escaparHtml(l.detalhe)}</span>` : ""}</td>
-      <td class="num">${n(l.inicio)}</td><td class="num">${l.entrou ? "+" + l.entrou : "0"}</td><td class="num">${l.saiu ? "−" + l.saiu : "0"}</td>
+      <td class="num">${n(l.inicio)}${l.comecou ? "*" : ""}</td><td class="num">${l.entrou ? "+" + l.entrou : "0"}</td><td class="num">${l.saiu ? "−" + l.saiu : "0"}</td>
       <td class="num">${sinal(l.ajuste)}</td><td class="num"><b>${n(l.fim)}</b></td>
       <td class="num">${l.vv ? real(l.vv) : "—"}</td><td class="num">${rs(l.custo)}</td><td class="num">${rs(l.lucro)}</td></tr>`).join("")}</tbody>
-    <tfoot><tr><td>Total</td><td class="num"></td><td class="num">+${T.entrou}</td><td class="num">−${T.saiu}</td><td class="num">${sinal(T.ajuste)}</td><td class="num"></td>
+    <tfoot><tr><td>Total</td><td class="num"></td><td class="num">${sinal(T.entrou)}</td><td class="num">${sinal(-T.saiu)}</td><td class="num">${sinal(T.ajuste)}</td><td class="num"></td>
       <td class="num">${real(T.vv)}</td><td class="num">${real(T.custo)}</td><td class="num">${real(lucro)}</td></tr></tfoot>`
     : `<tbody><tr><td>Nenhum produto com estoque ou venda no período. Ligue o controle na aba Estoque.</td></tr></tbody>`;
 }
@@ -1947,7 +1949,7 @@ document.addEventListener("visibilitychange", () => { if (!document.hidden) conf
 // ================= estoque =================
 let movimentos = [], filtroEstoque = "todos", abertoEstoque = null; // abertoEstoque = { id, modo: 'chegou' | 'ajustar' }
 let ultimoCusto = {}; // produto_id -> custo de cada na última entrada com custo
-const TIPOS_MOV = { entrada: "Chegou", ajuste: "Ajuste de contagem", venda: "Venda", devolucao: "Devolvido (pedido cancelado)" };
+const TIPOS_MOV = { inicial: "Estoque inicial", entrada: "Chegou", ajuste: "Ajuste de contagem", venda: "Venda", devolucao: "Devolvido (pedido cancelado)" };
 
 function situacaoEstoque(p) {
   if (p.estoque == null) return ["sem", "Não controla"];
