@@ -1547,9 +1547,16 @@ async function montarMensalidades() {
       <div class="valor-mensal">${real(Number(m.valor))}</div>
       <div class="det">Vencimento ${dataIsoBr(m.vencimento)}${m.paga_em ? ` · paga em ${new Date(m.paga_em).toLocaleDateString("pt-BR")}` : ""}</div>
       ${m.obs ? `<div class="det">${escaparHtml(m.obs)}</div>` : ""}
+      ${!m.nota ? `<div class="det" style="color:var(--laranja);font-weight:600">Nota fiscal ainda não enviada</div>` : ""}
       <div class="acoes-pedido">
-        ${m.nota ? `<button class="btn-secundario" data-arquivo="${escaparHtml(m.nota)}">📄 Nota fiscal</button>` : ""}
-        ${m.boleto ? `<button class="btn-secundario" data-arquivo="${escaparHtml(m.boleto)}">🧾 Boleto</button>` : ""}
+        ${m.nota ? `<button class="btn-secundario" data-baixar="nota" data-id="${m.id}">⬇ Nota fiscal</button>` : ""}
+        ${m.boleto ? `<button class="btn-secundario" data-baixar="boleto" data-id="${m.id}">⬇ Boleto</button>` : ""}
+        ${master ? `
+          <label class="btn-secundario anexo">📎 ${m.nota ? "Trocar nota" : "Anexar nota"}<input type="file" accept="application/pdf,image/jpeg,image/png" data-anexar="nota" data-id="${m.id}" hidden></label>
+          <label class="btn-secundario anexo">📎 ${m.boleto ? "Trocar boleto" : "Anexar boleto"}<input type="file" accept="application/pdf,image/jpeg,image/png" data-anexar="boleto" data-id="${m.id}" hidden></label>
+        ` : ""}
+      </div>
+      <div class="acoes-pedido">
         ${master ? `<select data-status-mensal="${m.id}" aria-label="Situação">${Object.entries(NOMES_STATUS).map(([v, n]) =>
           `<option value="${v}" ${m.status === v ? "selected" : ""}>${n}</option>`).join("")}</select>
           <button class="link-perigo" data-apagar-mensal="${m.id}">apagar</button>` : ""}
@@ -1558,14 +1565,27 @@ async function montarMensalidades() {
   atualizarPontoConta();
 }
 $("listaMensal").addEventListener("click", async ev => {
-  const arq = ev.target.closest("[data-arquivo]");
+  const baixar = ev.target.closest("[data-baixar]");
   const apagar = ev.target.closest("[data-apagar-mensal]");
-  if (arq) {
-    // abre a janela já no toque (senão o navegador bloqueia) e depois coloca o link temporário
-    const janela = window.open("", "_blank");
-    const { data, error } = await db.storage.from("cobrancas").createSignedUrl(arq.dataset.arquivo, 300);
-    if (error || !data?.signedUrl) { if (janela) janela.close(); avisar("Não deu pra abrir o arquivo agora"); return; }
-    if (janela) janela.location = data.signedUrl; else location.href = data.signedUrl;
+  if (baixar) {
+    const m = mensalidades.find(x => x.id === baixar.dataset.id);
+    const tipo = baixar.dataset.baixar;
+    const caminho = m?.[tipo];
+    if (!caminho) return;
+    // nome do arquivo baixado: "Nota fiscal - dezembro 2026 - Loja Leo.pdf"
+    const ext = caminho.split(".").pop();
+    const nomeArq = `${tipo === "nota" ? "Nota fiscal" : "Boleto"} - ${mesRef(m.referencia).replace("/", " ")} - ${loja.config.nome}.${ext}`
+      .replace(/[\\/:*?"<>|]/g, "");
+    const url = await ocupado("Preparando o arquivo...", async () => {
+      const { data, error } = await db.storage.from("cobrancas").createSignedUrl(caminho, 300, { download: nomeArq });
+      if (error || !data?.signedUrl) throw new Error("Não deu pra baixar o arquivo agora");
+      return data.signedUrl;
+    });
+    if (!url) return;
+    const a = document.createElement("a");
+    a.href = url; a.download = nomeArq; a.rel = "noopener";
+    document.body.appendChild(a); a.click(); a.remove();
+    avisar(`Baixando: ${nomeArq}`);
   } else if (apagar) {
     const m = mensalidades.find(x => x.id === apagar.dataset.apagarMensal);
     if (!m || !confirm(`Apagar a cobrança de ${mesRef(m.referencia)}? A nota e o boleto anexados também são apagados.`)) return;
@@ -1579,6 +1599,31 @@ $("listaMensal").addEventListener("click", async ev => {
   }
 });
 $("listaMensal").addEventListener("change", async ev => {
+  const anexo = ev.target.closest("[data-anexar]");
+  if (anexo) {
+    const f = anexo.files[0];
+    anexo.value = "";
+    if (!f) return;
+    if (!TIPOS_COBRANCA.includes(f.type)) { avisar("Envie em PDF, JPG ou PNG"); return; }
+    if (f.size > 10 * 1024 * 1024) { avisar("Arquivo maior que 10 MB"); return; }
+    const tipo = anexo.dataset.anexar;
+    const m = mensalidades.find(x => x.id === anexo.dataset.id);
+    if (!m) return;
+    const antigo = m[tipo]; // guarda antes de gravar o novo
+    const r = await ocupado(tipo === "nota" ? "Enviando a nota..." : "Enviando o boleto...", async () => {
+      const caminho = await enviarArquivoCobranca(f, tipo);
+      try {
+        checar(await db.from("mensalidades").update({ [tipo]: caminho }).eq("id", m.id).select("id").single());
+      } catch (e) {
+        await db.storage.from("cobrancas").remove([caminho]); // não deixa arquivo solto
+        throw e;
+      }
+      if (antigo && antigo !== caminho) await db.storage.from("cobrancas").remove([antigo]); // apaga o arquivo antigo
+      return true;
+    });
+    if (r) { avisar(tipo === "nota" ? "Nota fiscal anexada: a loja já pode baixar" : "Boleto anexado: a loja já pode baixar"); montarMensalidades(); }
+    return;
+  }
   const s = ev.target.closest("[data-status-mensal]");
   if (!s) return;
   const r = await ocupado("Salvando...", async () => {
@@ -1605,6 +1650,7 @@ $("btnLancarMensal").onclick = async () => {
     if (!TIPOS_COBRANCA.includes(f.type)) { avisar("Envie a nota e o boleto em PDF, JPG ou PNG"); return; }
     if (f.size > 10 * 1024 * 1024) { avisar("Arquivo maior que 10 MB"); return; }
   }
+  if (!nota && !confirm("Lançar a cobrança SEM a nota fiscal? Dá pra anexar depois em \"Anexar nota\".")) return;
   const nomeLoja = loja.config.nome;
   const r = await ocupado("Lançando a cobrança...", async () => {
     const enviados = [];
