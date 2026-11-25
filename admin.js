@@ -309,6 +309,8 @@ function abrirEditor(p) {
   $("pPrecoDe").value = emPromocao(editando) ? paraCampo(editando.precoDe) : "";
   $("pAtivo").checked = !!editando.ativo;
   $("btnExcluir").classList.toggle("oculto", !p);
+  $("secEstoqueNovo").classList.toggle("oculto", !!p || !podeAba("estoque"));
+  $("pEstoque").value = ""; $("pEstoqueMin").value = "";
   $("listaCategorias").innerHTML = [...new Set(loja.produtos.map(x => x.categoria).filter(Boolean))].map(c => `<option value="${escaparHtml(c)}">`).join("");
   document.querySelectorAll("#formProduto .campo.erro").forEach(c => c.classList.remove("erro"));
   mostrarFoto();
@@ -380,6 +382,12 @@ $("btnSalvarProduto").onclick = async () => {
   if (!nome) { erroCampo("pNome", "Dê um nome ao produto"); ok = false; }
   if (preco == null || isNaN(preco) || preco <= 0) { erroCampo("pPreco", "Preço inválido"); ok = false; }
   if (de != null && isNaN(de)) { erroCampo("pPrecoDe", "Valor inválido"); ok = false; }
+  // produto novo já com estoque
+  const novoComEstoque = !editando.id && podeAba("estoque") && $("pEstoque").value.trim() !== "";
+  const estIni = inteiro($("pEstoque").value);
+  const estMin = $("pEstoqueMin").value.trim() === "" ? 0 : inteiro($("pEstoqueMin").value);
+  if (novoComEstoque && (estIni == null || estIni < 0)) { erroCampo("pEstoque", "Quantidade inválida"); ok = false; }
+  if (novoComEstoque && (estMin == null || estMin < 0)) { erroCampo("pEstoqueMin", "Número inválido"); ok = false; }
   if (!ok) return;
   if (de != null && de <= preco) de = null; // "de" menor ou igual não é promoção
 
@@ -390,7 +398,13 @@ $("btnSalvarProduto").onclick = async () => {
     const q = editando.id
       ? db.from("produtos").update(dados).eq("id", editando.id).select().single()
       : db.from("produtos").insert(dados).select().single();
-    return produtoDoBanco(checar(await q));
+    const salvoP = produtoDoBanco(checar(await q));
+    if (novoComEstoque) {
+      checar(await db.rpc("configurar_estoque", { p_produto: salvoP.id, p_minimo: estMin, p_controlar: true }));
+      if (estIni > 0) checar(await db.rpc("mover_estoque", { p_produto: salvoP.id, p_tipo: "ajuste", p_qtd: estIni, p_obs: "Estoque inicial" }));
+      salvoP.estoque = estIni; salvoP.estoqueMinimo = estMin;
+    }
+    return salvoP;
   });
   if (!salvo) return;
   if (editando.foto && editando.foto !== salvo.foto) apagarImagem(editando.foto); // trocou ou tirou a foto
@@ -399,6 +413,7 @@ $("btnSalvarProduto").onclick = async () => {
   avisar(emPromocao(salvo) ? "Salvo — aparece como promoção" : "Produto salvo");
   fecharEditor();
   montarLista();
+  if (!$("abaEstoque").classList.contains("oculto")) montarEstoque(); else contarEstoqueBaixo();
 };
 
 $("btnExcluir").onclick = async () => {
@@ -1190,6 +1205,8 @@ function montarConfig() {
   $("cTroca").value = String(c.trocaBanner ?? 5);
   $("cHorarios").value = (c.horarios || []).join("\n");
   $("cTaxa").value = paraCampo(Number(c.taxaEntrega || 0));
+  regrasFrete = copia(c.taxasEspeciais || []).map(r => ({ dias: r.dias || [], de: r.de || "", ate: r.ate || "", valor: paraCampo(r.valor) }));
+  montarRegras();
   $("cDias").innerHTML = DIAS_CURTOS.map((d, i) =>
     `<label><input type="checkbox" value="${i}" ${(c.diasSemEntrega || []).includes(i) ? "checked" : ""}>${d}</label>`).join("");
   mostrarLogo();
@@ -1202,19 +1219,30 @@ $("btnSalvarLoja").onclick = () => {
   const taxa = numero($("cTaxa").value);
   if (!horarios.length) { avisar("Coloque pelo menos um horário de entrega"); return; }
   if (taxa != null && (isNaN(taxa) || taxa < 0)) { avisar("Taxa de entrega inválida"); return; }
+  lerRegras();
+  const taxasEspeciais = [];
+  for (const [i, r] of regrasFrete.entries()) {
+    const valor = numero(r.valor);
+    if (valor == null || isNaN(valor) || valor < 0) { avisar(`Regra ${i + 1}: digite o valor da taxa (0 = grátis)`); return; }
+    if (!r.de && !r.ate && !r.dias.length) { avisar(`Regra ${i + 1}: escolha os dias ou o horário`); return; }
+    if (r.de && r.ate && r.ate <= r.de) { avisar(`Regra ${i + 1}: o "até" precisa ser depois do "a partir de"`); return; }
+    taxasEspeciais.push({ dias: r.dias, de: r.de, ate: r.ate, valor });
+  }
   Object.assign(loja.config, {
     horarios,
     diasSemEntrega: [...document.querySelectorAll("#cDias input:checked")].map(i => Number(i.value)),
     taxaEntrega: taxa || 0,
+    taxasEspeciais,
   });
   salvarConfig("Entrega salva");
 };
 
 // o fundo escuro e o Esc fecham qualquer editor aberto
-$("fundo").onclick = () => { if (bannerEd) fecharBanner(); else fecharEditor(); };
+$("fundo").onclick = () => { if (entregaAberta()) fecharEntrega(); else if (bannerEd) fecharBanner(); else fecharEditor(); };
 document.addEventListener("keydown", ev => {
   if (ev.key !== "Escape") return;
   if ($("menuConta").classList.contains("aberto")) fecharMenuConta();
+  else if (entregaAberta()) fecharEntrega();
   else if (bannerEd) fecharBanner(); else if (editando) fecharEditor();
 });
 
@@ -1660,6 +1688,7 @@ document.addEventListener("visibilitychange", () => { if (!document.hidden) conf
 
 // ================= estoque =================
 let movimentos = [], filtroEstoque = "todos", abertoEstoque = null; // abertoEstoque = { id, modo: 'chegou' | 'ajustar' }
+let ultimoCusto = {}; // produto_id -> custo de cada na última entrada com custo
 const TIPOS_MOV = { entrada: "Chegou", ajuste: "Ajuste de contagem", venda: "Venda", devolucao: "Devolvido (pedido cancelado)" };
 
 function situacaoEstoque(p) {
@@ -1686,11 +1715,21 @@ async function montarEstoque(recarregar = true) {
       });
       movimentos = checar(await db.from("estoque_movimentos").select("*").eq("loja_id", lojaId)
         .order("criado_em", { ascending: false }).limit(40));
+      const entradas = checar(await db.from("estoque_movimentos").select("produto_id,custo_unit,fornecedor")
+        .eq("loja_id", lojaId).eq("tipo", "entrada").order("criado_em", { ascending: false }).limit(300));
+      ultimoCusto = {};
+      const fornecedores = new Set();
+      entradas.forEach(m => {
+        if (m.custo_unit != null && !(m.produto_id in ultimoCusto)) ultimoCusto[m.produto_id] = Number(m.custo_unit);
+        if (m.fornecedor) fornecedores.add(m.fornecedor);
+      });
+      $("listaFornecedores").innerHTML = [...fornecedores].map(f => `<option value="${escaparHtml(f)}">`).join("");
       return true;
     });
     if (!ok || lojaId !== loja?.id) return;
   }
   const ps = loja.produtos;
+  $("btnNovoProdEst").classList.toggle("oculto", !podeAba("produtos"));
   const cont = { falta: 0, baixo: 0, ok: 0, sem: 0 };
   ps.forEach(p => cont[situacaoEstoque(p)[0]]++);
   $("estResumo").innerHTML = [["falta", "Esgotados"], ["baixo", "Estoque baixo"], ["ok", "Em estoque"], ["todos", "Todos os produtos"]]
@@ -1707,7 +1746,16 @@ async function montarEstoque(recarregar = true) {
   $("listaMov").innerHTML = movimentos.map(m => `
     <div class="mov">
       <span class="quando">${new Date(m.criado_em).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}</span>
-      <span class="oque">${escaparHtml(nomeDe(m.produto_id))}<small>${TIPOS_MOV[m.tipo] || m.tipo}${m.obs ? " · " + escaparHtml(m.obs) : ""} · ficou ${m.saldo}</small></span>
+      <span class="oque">${escaparHtml(nomeDe(m.produto_id))}<small>${[
+        TIPOS_MOV[m.tipo] || m.tipo,
+        m.fornecedor ? escaparHtml(m.fornecedor) : "",
+        m.nota ? "nota " + escaparHtml(m.nota) : "",
+        m.custo_unit != null ? real(Number(m.custo_unit)) + " cada" : "",
+        m.validade ? "validade " + dataIsoBr(m.validade) : "",
+        m.lote ? "lote " + escaparHtml(m.lote) : "",
+        m.obs ? escaparHtml(m.obs) : "",
+        "ficou " + m.saldo,
+      ].filter(Boolean).join(" · ")}</small></span>
       <span class="delta ${m.quantidade >= 0 ? "mais" : "menos"}">${m.quantidade > 0 ? "+" : ""}${m.quantidade}</span>
     </div>`).join("") || `<p class="ajuda" style="margin:0">Nada ainda.</p>`;
   contarEstoqueBaixo();
@@ -1716,11 +1764,22 @@ function linhaEstoque(p) {
   const [cls, txt] = situacaoEstoque(p);
   const modo = abertoEstoque?.id === p.id ? abertoEstoque.modo : null;
   const sub = [p.detalhe, p.estoque != null && p.estoqueMinimo ? `mínimo ${p.estoqueMinimo}` : "", p.ativo ? "" : "fora da loja"].filter(Boolean).join(" · ");
+  const custo = ultimoCusto[p.id];
+  const custoTxt = custo != null
+    ? `último custo ${real(custo)}${p.preco > 0 ? ` · margem ${Math.round((p.preco - custo) / p.preco * 100)}%` : ""}` : "";
   const form = modo === "chegou" ? `
     <div class="form-est">
       <div class="linha">
         <div class="campo"><label for="estQtd">Quantidade que chegou</label><input id="estQtd" type="number" min="1" step="1" inputmode="numeric"></div>
-        <div class="campo"><label for="estObs">Observação (opcional)</label><input id="estObs" maxlength="200" placeholder="Ex: nota 1234, fornecedor"></div>
+        <div class="campo"><label for="estCusto">Custo de cada (R$)</label><input id="estCusto" inputmode="decimal" placeholder="Opcional"></div>
+      </div>
+      <div class="linha">
+        <div class="campo"><label for="estForn">Fornecedor</label><input id="estForn" list="listaFornecedores" maxlength="120" placeholder="Opcional"></div>
+        <div class="campo"><label for="estNota">Nº da nota</label><input id="estNota" maxlength="60" placeholder="Opcional"></div>
+      </div>
+      <div class="linha">
+        <div class="campo"><label for="estValidade">Validade</label><input id="estValidade" type="date"></div>
+        <div class="campo"><label for="estLote">Lote</label><input id="estLote" maxlength="60" placeholder="Opcional"></div>
       </div>
       <div class="botoes"><button class="btn-principal" data-est-salvar="chegou">Somar ao estoque</button><button class="btn-secundario" data-est-cancelar>Cancelar</button></div>
     </div>` : modo === "ajustar" ? `
@@ -1736,7 +1795,7 @@ function linhaEstoque(p) {
   return `
     <div class="linha-est ${cls}" data-est-produto="${p.id}">
       <div class="topo-est">
-        <div class="meio"><div class="nome">${escaparHtml(p.nome)}</div><div class="sub">${escaparHtml(sub)}</div></div>
+        <div class="meio"><div class="nome">${escaparHtml(p.nome)}</div><div class="sub">${escaparHtml(sub)}</div>${custoTxt ? `<div class="custo-est">${custoTxt}</div>` : ""}</div>
         <div class="qtd-est"><b>${p.estoque == null ? "—" : p.estoque}</b><span class="selo-est ${cls}">${txt}</span></div>
       </div>
       ${modo ? "" : `<div class="botoes-est">
@@ -1768,10 +1827,15 @@ $("abaEstoque").addEventListener("click", async ev => {
   if (salvar.dataset.estSalvar === "chegou") {
     const qtd = inteiro($("estQtd").value);
     if (!qtd || qtd <= 0) { avisar("Digite quantas unidades chegaram"); return; }
+    const custo = $("estCusto").value.trim() ? numero($("estCusto").value) : null;
+    if (custo != null && (isNaN(custo) || custo < 0)) { avisar("Custo inválido"); return; }
     const r = await ocupado("Somando ao estoque...", async () =>
-      checar(await db.rpc("mover_estoque", { p_produto: p.id, p_tipo: "entrada", p_qtd: qtd, p_obs: obs })));
+      checar(await db.rpc("lancar_entrada", {
+        p_itens: [{ produto: p.id, qtd, custo, validade: $("estValidade").value || null, lote: $("estLote").value.trim() }],
+        p_fornecedor: $("estForn").value.trim(), p_nota: $("estNota").value.trim(), p_obs: obs,
+      })));
     if (r == null) return;
-    avisar(`+${qtd} ${p.nome}: agora tem ${r}`);
+    avisar(`+${qtd} ${p.nome} no estoque`);
   } else {
     const controlar = $("estControlar").checked;
     const minimo = inteiro($("estMinimo").value) ?? 0;
@@ -1798,6 +1862,137 @@ $("abaEstoque").addEventListener("keydown", ev => {
   }
 });
 $("estBusca").oninput = () => { abertoEstoque = null; montarEstoque(false); };
+$("btnNovoProdEst").onclick = () => abrirEditor(null);
+
+// ----- lançar entrega: vários produtos de uma vez (uma nota inteira) -----
+let linhasEntrega = [];
+const linhaVazia = () => ({ produto: "", qtd: "", custo: "", validade: "", lote: "" });
+function opcoesProdutos(escolhido) {
+  return `<option value="">Escolha o produto...</option>` + [...loja.produtos]
+    .sort((a, b) => a.nome.localeCompare(b.nome))
+    .map(p => `<option value="${p.id}" ${p.id === escolhido ? "selected" : ""}>${escaparHtml(p.nome)}${p.detalhe ? " · " + escaparHtml(p.detalhe) : ""}</option>`).join("");
+}
+function lerLinhasEntrega() {
+  document.querySelectorAll("#itensEntrega [data-linha]").forEach(el => {
+    const l = linhasEntrega[Number(el.dataset.linha)];
+    if (l) el.querySelectorAll("[data-c]").forEach(c => { l[c.dataset.c] = c.value; });
+  });
+}
+function montarLinhasEntrega() {
+  $("itensEntrega").innerHTML = linhasEntrega.map((l, i) => `
+    <div class="item-entrega" data-linha="${i}">
+      <div class="cab-item"><b>Produto ${i + 1}</b>${linhasEntrega.length > 1 ? `<button type="button" class="link-perigo" data-tirar-linha="${i}">remover</button>` : ""}</div>
+      <div class="campo"><label>Produto</label><select data-c="produto">${opcoesProdutos(l.produto)}</select></div>
+      <div class="linha">
+        <div class="campo"><label>Quantidade</label><input data-c="qtd" type="number" min="1" step="1" inputmode="numeric" value="${escaparHtml(l.qtd)}"></div>
+        <div class="campo"><label>Custo de cada (R$)</label><input data-c="custo" inputmode="decimal" placeholder="Opcional" value="${escaparHtml(l.custo)}"></div>
+      </div>
+      <div class="linha">
+        <div class="campo"><label>Validade</label><input data-c="validade" type="date" value="${escaparHtml(l.validade)}"></div>
+        <div class="campo"><label>Lote</label><input data-c="lote" maxlength="60" placeholder="Opcional" value="${escaparHtml(l.lote)}"></div>
+      </div>
+    </div>`).join("");
+  resumoEntrega();
+}
+function resumoEntrega() {
+  lerLinhasEntrega();
+  let produtos = 0, unidades = 0, valor = 0, temCusto = false;
+  linhasEntrega.forEach(l => {
+    const q = inteiro(l.qtd);
+    if (!l.produto || !q || q <= 0) return;
+    produtos++; unidades += q;
+    const c = String(l.custo).trim() ? numero(l.custo) : null;
+    if (c != null && !isNaN(c)) { valor += c * q; temCusto = true; }
+  });
+  $("resumoEntrega").textContent = `${produtos} ${produtos === 1 ? "produto" : "produtos"} · ${unidades} ${unidades === 1 ? "unidade" : "unidades"}${temCusto ? " · total " + real(valor) : ""}`;
+}
+function abrirEntrega() {
+  if (!loja?.produtos.length) { avisar("Cadastre os produtos primeiro"); return; }
+  linhasEntrega = [linhaVazia()];
+  $("entForn").value = ""; $("entNota").value = ""; $("entObs").value = "";
+  montarLinhasEntrega();
+  $("painelEntrega").classList.remove("oculto");
+  $("fundo").classList.remove("oculto");
+  $("entForn").focus();
+}
+function fecharEntrega() {
+  $("painelEntrega").classList.add("oculto");
+  $("fundo").classList.add("oculto");
+}
+function entregaAberta() { return !$("painelEntrega").classList.contains("oculto"); }
+$("btnLancarEntrega").onclick = abrirEntrega;
+$("btnFecharEntrega").onclick = fecharEntrega;
+$("btnMaisItem").onclick = () => {
+  lerLinhasEntrega();
+  linhasEntrega.push(linhaVazia());
+  montarLinhasEntrega();
+  document.querySelector(`#itensEntrega [data-linha="${linhasEntrega.length - 1}"] select`)?.focus();
+};
+$("itensEntrega").addEventListener("click", ev => {
+  const b = ev.target.closest("[data-tirar-linha]");
+  if (!b) return;
+  lerLinhasEntrega();
+  linhasEntrega.splice(Number(b.dataset.tirarLinha), 1);
+  montarLinhasEntrega();
+});
+$("itensEntrega").addEventListener("input", resumoEntrega);
+$("itensEntrega").addEventListener("change", resumoEntrega);
+$("btnSalvarEntrega").onclick = async () => {
+  lerLinhasEntrega();
+  const usadas = linhasEntrega.filter(l => l.produto || String(l.qtd).trim() || String(l.custo).trim() || l.validade || String(l.lote).trim());
+  if (!usadas.length) { avisar("Coloque pelo menos um produto"); return; }
+  const itens = [];
+  for (const [i, l] of usadas.entries()) {
+    const n = i + 1, qtd = inteiro(l.qtd);
+    if (!l.produto) { avisar(`Produto ${n}: escolha qual produto chegou`); return; }
+    if (!qtd || qtd <= 0) { avisar(`Produto ${n}: digite a quantidade`); return; }
+    const custo = String(l.custo).trim() ? numero(l.custo) : null;
+    if (custo != null && (isNaN(custo) || custo < 0)) { avisar(`Produto ${n}: custo inválido`); return; }
+    itens.push({ produto: l.produto, qtd, custo, validade: l.validade || null, lote: String(l.lote).trim() });
+  }
+  const r = await ocupado("Lançando a entrega...", async () => checar(await db.rpc("lancar_entrada", {
+    p_itens: itens, p_fornecedor: $("entForn").value.trim(), p_nota: $("entNota").value.trim(), p_obs: $("entObs").value.trim(),
+  })));
+  if (r == null) return;
+  fecharEntrega();
+  avisar(`Entrega lançada: ${r} ${r === 1 ? "produto somado" : "produtos somados"} ao estoque`);
+  montarEstoque();
+};
+
+// ================= regras de taxa de entrega (dia da semana + horário) =================
+let regrasFrete = [];
+function montarRegras() {
+  $("cRegras").innerHTML = regrasFrete.map((r, i) => `
+    <div class="regra-frete" data-regra="${i}">
+      <div class="permissoes">${DIAS_CURTOS.map((d, n) => `<label><input type="checkbox" data-dia="${n}" ${r.dias.includes(n) ? "checked" : ""}>${d}</label>`).join("")}</div>
+      <div class="linha">
+        <div class="campo"><label>A partir de</label><input type="time" data-r="de" value="${escaparHtml(r.de)}"></div>
+        <div class="campo"><label>Até</label><input type="time" data-r="ate" value="${escaparHtml(r.ate)}"></div>
+        <div class="campo"><label>Taxa (R$)</label><input inputmode="decimal" data-r="valor" placeholder="Ex: 10,00" value="${escaparHtml(r.valor)}"></div>
+      </div>
+      <button type="button" class="link-perigo" data-tirar-regra="${i}">remover regra</button>
+    </div>`).join("") || `<p class="ajuda" style="margin:0 0 8px">Nenhuma regra: vale sempre a taxa normal.</p>`;
+}
+function lerRegras() {
+  document.querySelectorAll("#cRegras [data-regra]").forEach(el => {
+    const r = regrasFrete[Number(el.dataset.regra)];
+    if (!r) return;
+    el.querySelectorAll("[data-r]").forEach(c => { r[c.dataset.r] = c.value.trim(); });
+    r.dias = [...el.querySelectorAll("[data-dia]:checked")].map(c => Number(c.dataset.dia));
+  });
+}
+$("btnNovaRegra").onclick = () => {
+  lerRegras();
+  regrasFrete.push({ dias: [], de: "", ate: "", valor: "" });
+  montarRegras();
+};
+$("cRegras").addEventListener("click", ev => {
+  const b = ev.target.closest("[data-tirar-regra]");
+  if (!b) return;
+  lerRegras();
+  regrasFrete.splice(Number(b.dataset.tirarRegra), 1);
+  montarRegras();
+});
 
 // ================= início =================
 let recuperandoSenha = false;

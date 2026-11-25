@@ -28,6 +28,7 @@ const CONFIG_PADRAO = {
   horarios: ["08:00 - 10:00", "10:00 - 12:00", "13:30 - 15:30", "15:30 - 18:00"],
   diasSemEntrega: [0],     // 0 = domingo ... 6 = sábado
   taxaEntrega: 0,
+  taxasEspeciais: [],        // [{ dias: [0..6] (vazio = todos), de: "19:00", ate: "", valor: 10 }]
 };
 function copia(o) { return JSON.parse(JSON.stringify(o)); }
 

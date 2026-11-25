@@ -12,7 +12,7 @@
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="Painel Agro Pet">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
-  <link rel="stylesheet" href="estilo.css?v=20261125">
+  <link rel="stylesheet" href="estilo.css?v=20261125c">
   <style>
     body { padding-bottom: 40px; }
     .topo a { color: #fff; text-decoration: none; background: rgba(255,255,255,.15); border-radius: 999px; padding: 8px 14px; font-weight: 600; }
@@ -226,6 +226,16 @@
     .mov .delta { font-weight: 800; font-variant-numeric: tabular-nums; white-space: nowrap; }
     .mov .delta.mais { color: var(--verde-escuro); }
     .mov .delta.menos { color: var(--erro); }
+    /* entrada de mercadoria */
+    .acoes-estoque { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+    .acoes-estoque button { flex: 1; min-width: 190px; }
+    .item-entrega { border: 1px solid var(--borda); border-radius: 12px; padding: 10px 12px; margin-bottom: 10px; }
+    .item-entrega .cab-item { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+    .custo-est { font-size: 12px; color: var(--texto-suave); }
+    /* regras de taxa de entrega */
+    .regra-frete { border: 1px solid var(--borda); border-radius: 12px; padding: 10px 12px; margin-bottom: 10px; display: flex; flex-direction: column; gap: 8px; }
+    .regra-frete .linha { margin: 0; }
+    .regra-frete .campo { margin-bottom: 0; }
     /* tela de "salvando" */
     .carregando { position: fixed; inset: 0; z-index: 80; background: rgba(247,245,240,.75); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; font-weight: 600; }
     .girando { width: 36px; height: 36px; border-radius: 50%; border: 4px solid var(--verde-claro); border-top-color: var(--verde); animation: gira .8s linear infinite; }
@@ -287,6 +297,11 @@
 
     <!-- ===== estoque ===== -->
     <section id="abaEstoque" class="oculto">
+      <div class="acoes-estoque">
+        <button class="btn-principal" id="btnLancarEntrega">+ Lançar entrega (vários produtos)</button>
+        <button class="btn-secundario" id="btnNovoProdEst">+ Novo produto</button>
+      </div>
+      <datalist id="listaFornecedores"></datalist>
       <div class="resumo-estoque" id="estResumo"></div>
       <div class="linha" style="align-items:center;margin-bottom:10px">
         <input id="estBusca" type="search" placeholder="Buscar produto..." style="flex:1;border:1px solid var(--borda);border-radius:10px;padding:10px;background:#fff">
@@ -440,7 +455,13 @@
         <h3>Pedidos e entrega</h3>
         <div class="campo"><label for="cHorarios">Horários de entrega (um por linha)</label><textarea id="cHorarios" rows="4"></textarea></div>
         <div class="campo"><label>Dias SEM entrega</label><div class="dias" id="cDias"></div></div>
-        <div class="campo"><label for="cTaxa">Taxa de entrega (R$, 0 = grátis)</label><input id="cTaxa" inputmode="decimal"></div>
+        <div class="campo"><label for="cTaxa">Taxa de entrega normal (R$, 0 = grátis)</label><input id="cTaxa" inputmode="decimal"></div>
+        <div class="campo">
+          <label>Taxa por dia e horário</label>
+          <p class="ajuda" style="margin:0 0 8px">Ex.: entregas a partir das 19:00 custam R$ 10,00. Vale o dia e o horário de entrega que o cliente escolher. Sem dia marcado = todos os dias. Se nenhuma regra servir, vale a taxa normal acima.</p>
+          <div id="cRegras"></div>
+          <button type="button" class="btn-secundario" id="btnNovaRegra">+ Adicionar regra de taxa</button>
+        </div>
       </div>
       <button class="btn-principal" id="btnSalvarLoja" style="width:100%">Salvar</button>
     </section>
@@ -551,6 +572,15 @@
         <div class="campo"><label for="pPrecoDe">Preço "de" riscado (R$) — opcional</label><input id="pPrecoDe" inputmode="decimal" placeholder="Vazio = sem promoção"><span class="msg"></span></div>
       </div>
 
+      <div class="secao-form oculto" id="secEstoqueNovo">
+        <h3>Estoque (opcional)</h3>
+        <p class="ajuda">Se a loja controla o estoque deste produto, diga quantas unidades tem agora. Vazio = não controla.</p>
+        <div class="linha">
+          <div class="campo"><label for="pEstoque">Quantidade em estoque</label><input id="pEstoque" type="number" min="0" step="1" inputmode="numeric" placeholder="Ex: 20"><span class="msg"></span></div>
+          <div class="campo"><label for="pEstoqueMin">Avisar quando ficar em</label><input id="pEstoqueMin" type="number" min="0" step="1" inputmode="numeric" placeholder="Ex: 3"><span class="msg"></span></div>
+        </div>
+      </div>
+
       <label class="chk"><input type="checkbox" id="pAtivo"> Aparece na loja</label>
     </form>
     <footer>
@@ -622,6 +652,34 @@
     </footer>
   </aside>
 
+  <!-- lançar entrega (vários produtos de uma vez) -->
+  <aside class="painel oculto" id="painelEntrega" role="dialog" aria-modal="true" aria-labelledby="tituloEntrega">
+    <header>
+      <h2 id="tituloEntrega">Lançar entrega</h2>
+      <button class="btn-icone" id="btnFecharEntrega" aria-label="Fechar">✕</button>
+    </header>
+    <div class="corpo">
+      <div class="secao-form">
+        <h3>Nota e fornecedor</h3>
+        <div class="linha">
+          <div class="campo"><label for="entForn">Fornecedor</label><input id="entForn" list="listaFornecedores" maxlength="120" placeholder="Opcional"></div>
+          <div class="campo"><label for="entNota">Nº da nota</label><input id="entNota" maxlength="60" placeholder="Opcional"></div>
+        </div>
+        <div class="campo"><label for="entObs">Observação</label><input id="entObs" maxlength="200" placeholder="Opcional"></div>
+      </div>
+      <div class="secao-form">
+        <h3>Produtos que chegaram</h3>
+        <div id="itensEntrega"></div>
+        <button type="button" class="btn-secundario" id="btnMaisItem" style="width:100%">+ Adicionar outro produto</button>
+        <p class="ajuda" style="margin:8px 0 0">Produto que ainda não existe na loja? Feche aqui e use <b>+ Novo produto</b>.</p>
+      </div>
+    </div>
+    <footer>
+      <div class="ajuda" id="resumoEntrega" style="margin:0;text-align:center"></div>
+      <button class="btn-principal" id="btnSalvarEntrega">Lançar entrega</button>
+    </footer>
+  </aside>
+
   <!-- menu da engrenagem -->
   <div class="fundo-escuro oculto" id="fundoConta" style="z-index:55"></div>
   <nav class="menu-conta" id="menuConta" aria-label="Minha conta">
@@ -649,8 +707,8 @@
   <div class="aviso" id="aviso"></div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/dist/umd/supabase.min.js"></script>
-  <script src="dados.js?v=20261125"></script>
-  <script src="admin.js?v=20261125"></script>
-  <script src="pwa.js?v=20261125"></script>
+  <script src="dados.js?v=20261125c"></script>
+  <script src="admin.js?v=20261125c"></script>
+  <script src="pwa.js?v=20261125c"></script>
 </body>
 </html>

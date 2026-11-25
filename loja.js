@@ -29,12 +29,40 @@ function itensDoCarrinho() {
     .map(([id, qtd]) => ({ p: produtoPorId(id), qtd }))
     .filter(i => i.p && i.qtd > 0);
 }
+// ---------------- taxa de entrega (normal ou por dia/horário) ----------------
+function minutosDe(txt) { const m = String(txt || "").match(/(\d{1,2}):(\d{2})/); return m ? Number(m[1]) * 60 + Number(m[2]) : null; }
+function temTaxasEspeciais() { return (loja.config.taxasEspeciais || []).length > 0; }
+// vale a 1ª regra que bate com o dia da semana e o horário (início da faixa escolhida); senão, a taxa normal
+function taxaPara(dataIso, faixa) {
+  const normal = Number(loja.config.taxaEntrega || 0);
+  if (!dataIso || !faixa) return normal;
+  const dia = dataDeISO(dataIso).getDay();
+  const ini = minutosDe(faixa) ?? 0;
+  const regra = (loja.config.taxasEspeciais || []).find(r =>
+    (!r.dias?.length || r.dias.includes(dia)) && ini >= (minutosDe(r.de) ?? 0) && ini < (minutosDe(r.ate) ?? 24 * 60));
+  return regra ? Math.max(0, Number(regra.valor) || 0) : normal;
+}
+function entregaEscolhida() {
+  const campo = document.getElementById("fData");
+  return { iso: campo ? campo.value : "", faixa: document.querySelector('input[name="horario"]:checked')?.value || "" };
+}
+function rodapeEntrega() {
+  const t = totais();
+  const { faixa } = entregaEscolhida();
+  const taxaTxt = t.taxa > 0 ? real(t.taxa) : (faixa || !temTaxasEspeciais() ? "Grátis" : "escolha o horário");
+  $("rodapePainel").innerHTML = `
+    <div class="linha-total"><span>Taxa de entrega</span><span>${taxaTxt}</span></div>
+    <div class="linha-total grande"><span>Total</span><span>${real(t.total)}</span></div>
+    <button class="btn-principal" id="btnEnviar">Enviar pedido</button>`;
+}
+
 function totais() {
   const itens = itensDoCarrinho();
   const qtd = itens.reduce((s, i) => s + i.qtd, 0);
   const subtotal = itens.reduce((s, i) => s + i.qtd * i.p.preco, 0);
   const economia = itens.reduce((s, i) => s + (emPromocao(i.p) ? i.qtd * (i.p.precoDe - i.p.preco) : 0), 0);
-  const taxa = qtd > 0 ? Number(loja.config.taxaEntrega || 0) : 0;
+  const { iso, faixa } = entregaEscolhida();
+  const taxa = qtd > 0 ? taxaPara(iso, faixa) : 0;
   return { itens, qtd, subtotal, economia, taxa, total: subtotal + taxa };
 }
 function limiteDe(p) { return p && p.estoque != null ? Math.max(0, p.estoque) : Infinity; }
@@ -207,8 +235,10 @@ function montarPainel() {
 
     $("rodapePainel").innerHTML = t.itens.length ? `
       ${t.economia > 0 ? `<div class="linha-total" style="color:var(--laranja)"><span>Você economiza</span><span>${real(t.economia)}</span></div>` : ""}
-      ${t.taxa > 0 ? `<div class="linha-total"><span>Taxa de entrega</span><span>${real(t.taxa)}</span></div>` : ""}
-      <div class="linha-total grande"><span>Total</span><span>${real(t.total)}</span></div>
+      ${temTaxasEspeciais()
+        ? `<div class="linha-total"><span>Taxa de entrega</span><span style="font-size:13px">conforme dia e horário</span></div>`
+        : t.taxa > 0 ? `<div class="linha-total"><span>Taxa de entrega</span><span>${real(t.taxa)}</span></div>` : ""}
+      <div class="linha-total grande"><span>${temTaxasEspeciais() ? "Produtos" : "Total"}</span><span>${real(temTaxasEspeciais() ? t.subtotal : t.total)}</span></div>
       <button class="btn-principal" id="btnIrEntrega">Escolher entrega</button>
       <button class="btn-secundario" id="btnContinuar">Continuar comprando</button>`
       : `<button class="btn-principal" id="btnContinuar">Ver produtos</button>`;
@@ -216,9 +246,7 @@ function montarPainel() {
 
   if (passo === "entrega") {
     prepararData();
-    $("rodapePainel").innerHTML = `
-      <div class="linha-total grande"><span>Total</span><span>${real(t.total)}</span></div>
-      <button class="btn-principal" id="btnEnviar">Enviar pedido</button>`;
+    rodapeEntrega();
   }
 
   if (passo === "ok") {
@@ -273,7 +301,9 @@ function montarHorarios() {
 
   $("horarios").innerHTML = loja.config.horarios.map(h => {
     const ok = iso && !fechado && horarioDisponivel(iso, h);
-    return `<label class="${ok ? "" : "indisponivel"}"><input type="radio" name="horario" value="${escaparHtml(h)}" ${ok ? "" : "disabled"} ${ok && h === marcado ? "checked" : ""}>${escaparHtml(h)}</label>`;
+    const frete = temTaxasEspeciais() && ok ? taxaPara(iso, h) : null;
+    const freteTxt = frete == null ? "" : `<small class="frete-faixa">${frete > 0 ? "frete " + real(frete) : "frete grátis"}</small>`;
+    return `<label class="${ok ? "" : "indisponivel"}"><input type="radio" name="horario" value="${escaparHtml(h)}" ${ok ? "" : "disabled"} ${ok && h === marcado ? "checked" : ""}>${escaparHtml(h)}${freteTxt}</label>`;
   }).join("");
 }
 
@@ -495,6 +525,10 @@ document.addEventListener("keydown", ev => { if (ev.key === "Escape" && painelAb
 $("busca").addEventListener("input", ev => { termoBusca = ev.target.value; montarGrade(); });
 $("fCep").addEventListener("input", buscarCep);
 $("fData").addEventListener("change", montarHorarios);
+// trocou o dia ou o horário: atualiza a taxa e o total
+$("viewEntrega").addEventListener("change", ev => {
+  if (passo === "entrega" && (ev.target.name === "horario" || ev.target.id === "fData")) rodapeEntrega();
+});
 $("horarios").addEventListener("change", () => $("campoHorario").classList.remove("erro"));
 $("fPagamento").addEventListener("change", ev => $("campoTroco").classList.toggle("oculto", ev.target.value !== "Dinheiro"));
 $("viewEntrega").addEventListener("submit", ev => { ev.preventDefault(); enviarPedido(); });
