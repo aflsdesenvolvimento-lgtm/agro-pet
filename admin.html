@@ -12,7 +12,7 @@
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="Painel Agro Pet">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
-  <link rel="stylesheet" href="estilo.css?v=20261125k">
+  <link rel="stylesheet" href="estilo.css?v=20261125m">
   <style>
     body { padding-bottom: 40px; }
     .topo a { color: #fff; text-decoration: none; background: rgba(255,255,255,.15); border-radius: 999px; padding: 8px 14px; font-weight: 600; }
@@ -387,6 +387,13 @@
         </div>
       </div>
 
+      <div class="secao-form" id="finEstoqueBox">
+        <h3>Estoque × vendas <span class="ajuda" style="font-weight:400">(o que entrou × o que saiu no período)</span></h3>
+        <div class="kpis" id="finEstKpis" style="margin-bottom:8px"></div>
+        <p class="ajuda" id="finEstNota" style="margin:0 0 10px"></p>
+        <div class="tabela-rolagem"><table class="tabela" id="finEstTabela"></table></div>
+      </div>
+
       <div class="secao-form">
         <h3>Frete <span class="ajuda" style="font-weight:400">(taxa de entrega dos pedidos)</span></h3>
         <div class="kpis" id="finFreteKpis" style="margin-bottom:8px"></div>
@@ -724,8 +731,8 @@
   <div class="aviso" id="aviso"></div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/dist/umd/supabase.min.js"></script>
-  <script src="dados.js?v=20261125k"></script>
-  <script src="admin.js?v=20261125k"></script>
-  <script src="pwa.js?v=20261125k"></script>
+  <script src="dados.js?v=20261125m"></script>
+  <script src="admin.js?v=20261125m"></script>
+  <script src="pwa.js?v=20261125m"></script>
 </body>
 </html>

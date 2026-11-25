@@ -575,6 +575,17 @@ async function carregarFinanceiro() {
     if (!todas) q = q.eq("loja_id", loja.id);
     else if (!ehMaster()) q = q.in("loja_id", lojasComAba("financeiro"));
     finPedidos = checar(await q);
+    // estoque do período (só lojas em que a pessoa vê o estoque)
+    finEstLojas = todas ? (ehMaster() ? lojas.map(l => l.id) : lojasComAba("estoque")) : (podeAba("estoque") ? [loja.id] : []);
+    finMov = []; finProds = []; finCustos = [];
+    finAte = ate;
+    if (finEstLojas.length) {
+      finMov = checar(await db.from("estoque_movimentos").select("produto_id,loja_id,tipo,quantidade,custo_unit,criado_em")
+        .in("loja_id", finEstLojas).gte("criado_em", de.toISOString()).order("criado_em").limit(20000));
+      finProds = checar(await db.from("produtos").select("id,nome,detalhe,estoque,loja_id").in("loja_id", finEstLojas));
+      finCustos = checar(await db.from("estoque_movimentos").select("produto_id,quantidade,custo_unit")
+        .in("loja_id", finEstLojas).eq("tipo", "entrada").not("custo_unit", "is", null).limit(20000));
+    }
     return true;
   });
   if (!ok) return;
@@ -584,6 +595,7 @@ async function carregarFinanceiro() {
 
 // valor dos produtos do pedido (sem a taxa de entrega): é o que o Faturamento mostra; o frete tem a parte dele
 function valorProdutos(p) { return Math.max(0, Number(p.total || 0) - Number(p.taxa || 0)); }
+let finMov = [], finProds = [], finCustos = [], finEstLojas = [], finAte = null;
 function resumoFin(lista) {
   const soma = l => l.reduce((s, p) => s + valorProdutos(p), 0);
   const validos = lista.filter(p => p.status !== "cancelado");
@@ -660,6 +672,7 @@ function montarFinanceiro() {
     <tbody>${pl.map(([n, v]) => `<tr><td>${escaparHtml(n)}</td><td class="num">${v.qtd}</td><td class="num">${real(v.valor)}</td></tr>`).join("")}</tbody>`
     : `<tbody><tr><td>Nenhum produto entregue no período.</td></tr></tbody>`;
 
+  montarEstoqueVendas(r);
   montarFrete(r);
 
   // a receber
@@ -672,6 +685,89 @@ function montarFinanceiro() {
       </div>
       <button class="btn-secundario" data-pago-rapido="${p.id}" style="padding:8px 12px">💰 Marcar pago</button>
     </div>`).join("") : `<div class="vazio" style="padding:12px 0">Nada a receber nesse período. 👍</div>`;
+}
+
+// estoque × vendas: o que entrou × o que saiu no período, e o lucro bruto do que foi vendido
+function montarEstoqueVendas(r) {
+  if (!finEstLojas.length) {
+    $("finEstoqueBox").classList.add("oculto");
+    return;
+  }
+  $("finEstoqueBox").classList.remove("oculto");
+  const kpi = (rotulo, valor, extra) => `<div class="kpi"><div class="rotulo">${rotulo}</div><div class="valor">${valor}</div><div class="extra">${extra}</div></div>`;
+  const un = n => `${n < 0 ? "−" + Math.abs(n) : n} ${Math.abs(n) === 1 ? "unidade" : "unidades"}`;
+  const sinal = n => n > 0 ? "+" + n : n < 0 ? "−" + Math.abs(n) : "0";
+  // custo médio de cada produto: média das entradas com custo informado (de sempre)
+  const custoMedio = {};
+  const acc = {};
+  finCustos.forEach(m => { const a = acc[m.produto_id] ||= { q: 0, v: 0 }; a.q += Number(m.quantidade); a.v += Number(m.quantidade) * Number(m.custo_unit); });
+  Object.entries(acc).forEach(([id, a]) => { if (a.q > 0) custoMedio[id] = a.v / a.q; });
+  // vendido (entregue) por produto: mesma base do "Vendido" lá de cima
+  const vend = {};
+  r.entregues.forEach(p => (p.itens || []).forEach(i => {
+    const v = vend[i.id] ||= { q: 0, valor: 0, nome: i.nome, detalhe: i.detalhe };
+    v.q += Number(i.qtd || 0); v.valor += Number(i.preco || 0) * Number(i.qtd || 0);
+  }));
+  const ateIso = finAte.toISOString();
+  const linhas = {};
+  const linha = id => linhas[id] ||= { id, nome: "", detalhe: "", controla: false, inicio: null, fim: null, entrou: 0, compras: 0, saiu: 0, ajuste: 0, vq: 0, vv: 0 };
+  finProds.forEach(p => {
+    const l = linha(p.id);
+    l.nome = p.nome; l.detalhe = p.detalhe || ""; l.controla = p.estoque != null;
+    const depois = finMov.filter(m => m.produto_id === p.id && m.criado_em >= ateIso).reduce((s, m) => s + Number(m.quantidade), 0);
+    const noPeriodo = finMov.filter(m => m.produto_id === p.id && m.criado_em < ateIso);
+    if (l.controla || noPeriodo.length) {
+      l.fim = Number(p.estoque || 0) - depois;
+      l.inicio = l.fim - noPeriodo.reduce((s, m) => s + Number(m.quantidade), 0);
+    }
+    noPeriodo.forEach(m => {
+      const q = Number(m.quantidade);
+      if (m.tipo === "entrada") { l.entrou += q; if (m.custo_unit != null) l.compras += q * Number(m.custo_unit); }
+      else if (m.tipo === "venda" || m.tipo === "devolucao") l.saiu -= q;
+      else if (m.tipo === "ajuste") l.ajuste += q;
+    });
+  });
+  Object.entries(vend).forEach(([id, v]) => {
+    const l = linha(id);
+    if (!l.nome) { l.nome = v.nome || "Produto apagado"; l.detalhe = v.detalhe || ""; }
+    l.vq = v.q; l.vv = v.valor;
+  });
+  const lista = Object.values(linhas).filter(l => l.controla || l.entrou || l.saiu || l.ajuste || l.vq)
+    .sort((a, b) => b.vv - a.vv || a.nome.localeCompare(b.nome));
+  // totais
+  const T = { entrou: 0, compras: 0, saiu: 0, ajuste: 0, vv: 0, custo: 0, vvComCusto: 0 };
+  let semCusto = 0;
+  lista.forEach(l => {
+    T.entrou += l.entrou; T.compras += l.compras; T.saiu += l.saiu; T.ajuste += l.ajuste; T.vv += l.vv;
+    const c = custoMedio[l.id];
+    l.custo = l.vq && c != null ? l.vq * c : null;
+    l.lucro = l.custo != null ? l.vv - l.custo : null;
+    if (l.vq) { if (l.custo != null) { T.custo += l.custo; T.vvComCusto += l.vv; } else semCusto++; }
+  });
+  const lucro = T.vvComCusto - T.custo;
+  const margem = T.vvComCusto ? Math.round(lucro / T.vvComCusto * 100) : 0;
+  $("finEstKpis").innerHTML = [
+    kpi("Compras (entrou)", real(T.compras), un(T.entrou) + " no estoque"),
+    kpi("Saiu do estoque", un(T.saiu), "em pedidos feitos no período"),
+    kpi("Custo do que foi vendido", real(T.custo), "pelo custo médio das compras"),
+    kpi("Lucro bruto estimado", real(lucro), T.vvComCusto ? `margem de ${margem}% sobre ${real(T.vvComCusto)} vendidos` : "informe o custo nas entradas"),
+    kpi("Ajustes de contagem", (T.ajuste > 0 ? "+" : "") + un(T.ajuste), T.ajuste < 0 ? "faltou na prateleira (perda)" : T.ajuste > 0 ? "sobrou na prateleira" : "estoque bateu com a contagem"),
+  ].join("");
+  const notas = [];
+  if (semCusto) notas.push(`${semCusto} ${semCusto === 1 ? "produto vendido não tem" : "produtos vendidos não têm"} custo informado nas entradas, por isso ${semCusto === 1 ? "fica" : "ficam"} fora do lucro.`);
+  notas.push(`"Saiu" conta os pedidos feitos (o estoque baixa na hora do pedido); "Vendido" conta só os entregues, igual aos cartões de cima.`);
+  $("finEstNota").textContent = notas.join(" ");
+  const n = v => v == null ? "—" : String(v);
+  const rs = v => v == null ? "—" : real(v);
+  $("finEstTabela").innerHTML = lista.length ? `<thead><tr><th>Produto</th><th class="num">Início</th><th class="num">Entrou</th><th class="num">Saiu</th><th class="num">Ajuste</th><th class="num">Fim</th><th class="num">Vendido</th><th class="num">Custo</th><th class="num">Lucro</th></tr></thead>
+    <tbody>${lista.map(l => `<tr>
+      <td>${escaparHtml(l.nome)}${l.detalhe ? ` <span class="ajuda" style="margin:0">${escaparHtml(l.detalhe)}</span>` : ""}</td>
+      <td class="num">${n(l.inicio)}</td><td class="num">${l.entrou ? "+" + l.entrou : "0"}</td><td class="num">${l.saiu ? "−" + l.saiu : "0"}</td>
+      <td class="num">${sinal(l.ajuste)}</td><td class="num"><b>${n(l.fim)}</b></td>
+      <td class="num">${l.vv ? real(l.vv) : "—"}</td><td class="num">${rs(l.custo)}</td><td class="num">${rs(l.lucro)}</td></tr>`).join("")}</tbody>
+    <tfoot><tr><td>Total</td><td class="num"></td><td class="num">+${T.entrou}</td><td class="num">−${T.saiu}</td><td class="num">${sinal(T.ajuste)}</td><td class="num"></td>
+      <td class="num">${real(T.vv)}</td><td class="num">${real(T.custo)}</td><td class="num">${real(lucro)}</td></tr></tfoot>`
+    : `<tbody><tr><td>Nenhum produto com estoque ou venda no período. Ligue o controle na aba Estoque.</td></tr></tbody>`;
 }
 
 // frete: mesma base dos cartões de cima (cobrado = entregues; recebido = pagos)
