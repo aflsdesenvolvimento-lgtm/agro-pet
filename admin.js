@@ -578,12 +578,14 @@ async function carregarFinanceiro() {
     return true;
   });
   if (!ok) return;
-  $("finLegenda").textContent = `Pedidos feitos de ${finPeriodoTxt}${todas ? (ehMaster() ? ", todas as lojas" : ", todas as suas lojas") : ` · ${loja.config.nome}`}.`;
+  $("finLegenda").textContent = `Pedidos feitos de ${finPeriodoTxt}${todas ? (ehMaster() ? ", todas as lojas" : ", todas as suas lojas") : ` · ${loja.config.nome}`}. Valores dos produtos, sem o frete.`;
   montarFinanceiro();
 }
 
+// valor dos produtos do pedido (sem a taxa de entrega): é o que o Faturamento mostra; o frete tem a parte dele
+function valorProdutos(p) { return Math.max(0, Number(p.total || 0) - Number(p.taxa || 0)); }
 function resumoFin(lista) {
-  const soma = l => l.reduce((s, p) => s + Number(p.total || 0), 0);
+  const soma = l => l.reduce((s, p) => s + valorProdutos(p), 0);
   const validos = lista.filter(p => p.status !== "cancelado");
   const entregues = lista.filter(p => p.status === "entregue");
   const pagos = validos.filter(p => p.pago);
@@ -613,6 +615,11 @@ function montarFinanceiro() {
     kpi("Em andamento", real(r.andamento), qtd(r.nAndamento, "pedido ainda não entregue", "pedidos ainda não entregues")),
     kpi("Ticket médio", real(r.ticket), "por pedido entregue"),
     kpi("Cancelados", real(r.cancelado), qtd(r.nCancelados, "pedido", "pedidos")),
+    (() => {
+      const pagosComFrete = finPedidos.filter(p => p.status !== "cancelado" && p.pago && Number(p.taxa) > 0);
+      const freteRecebido = pagosComFrete.reduce((s, p) => s + Number(p.taxa), 0);
+      return kpi("Frete recebido", real(freteRecebido), qtd(pagosComFrete.length, "pedido pago com frete", "pedidos pagos com frete"));
+    })(),
   ].join("");
 
   // por loja (só quando a master olha todas)
@@ -633,12 +640,12 @@ function montarFinanceiro() {
   r.entregues.forEach(p => {
     const f = p.pagamento || "Não informado";
     formas[f] = formas[f] || { n: 0, total: 0, pago: 0 };
-    formas[f].n++; formas[f].total += Number(p.total); if (p.pago) formas[f].pago += Number(p.total);
+    formas[f].n++; formas[f].total += valorProdutos(p); if (p.pago) formas[f].pago += valorProdutos(p);
   });
   const fl = Object.entries(formas).sort((a, b) => b[1].total - a[1].total);
   $("finFormas").innerHTML = fl.length ? `<thead><tr><th>Forma</th><th class="num">Pedidos</th><th class="num">Vendido</th><th class="num">Recebido</th></tr></thead>
     <tbody>${fl.map(([f, v]) => `<tr><td>${escaparHtml(f)}</td><td class="num">${v.n}</td><td class="num">${real(v.total)}</td><td class="num">${real(v.pago)}</td></tr>`).join("")}</tbody>
-    <tfoot><tr><td>Total</td><td class="num">${r.nEntregues}</td><td class="num">${real(r.vendido)}</td><td class="num">${real(r.entregues.filter(p => p.pago).reduce((s, p) => s + Number(p.total), 0))}</td></tr></tfoot>`
+    <tfoot><tr><td>Total</td><td class="num">${r.nEntregues}</td><td class="num">${real(r.vendido)}</td><td class="num">${real(r.entregues.filter(p => p.pago).reduce((s, p) => s + valorProdutos(p), 0))}</td></tr></tfoot>`
     : `<tbody><tr><td>Nenhum pedido entregue no período.</td></tr></tbody>`;
 
   // produtos mais vendidos (pedidos entregues)
@@ -660,7 +667,7 @@ function montarFinanceiro() {
   $("finReceber").innerHTML = r.listaReceber.length ? r.listaReceber.map(p => `
     <div class="linha-adm">
       <div class="meio">
-        <div class="nome">${escaparHtml(p.cliente?.nome || "Cliente")} · ${real(p.total)}</div>
+        <div class="nome">${escaparHtml(p.cliente?.nome || "Cliente")} · ${real(valorProdutos(p))}${Number(p.taxa) > 0 ? ` <span class="ajuda" style="margin:0;font-weight:400">+ frete ${real(Number(p.taxa))}</span>` : ""}</div>
         <div class="sub">${new Date(p.criado_em).toLocaleDateString("pt-BR")} · ${escaparHtml(p.pagamento || "")}${todas ? " · " + escaparHtml(nomeLoja(p.loja_id)) : ""}${p.cliente?.telefone ? " · " + escaparHtml(p.cliente.telefone) : ""}</div>
       </div>
       <button class="btn-secundario" data-pago-rapido="${p.id}" style="padding:8px 12px">💰 Marcar pago</button>
@@ -685,7 +692,7 @@ function montarFrete(r) {
     kpi("Entregas grátis", String(gratis), qtd(r.nEntregues, "pedido entregue", "pedidos entregues") + " no total"),
   ].join("");
   $("finFreteNota").textContent = r.nEntregues
-    ? `O "Vendido" lá em cima já inclui o frete. Só produtos: ${real(r.vendido - cobrado)} · frete: ${real(cobrado)} (${Math.round(r.vendido ? cobrado / r.vendido * 100 : 0)}% do vendido).`
+    ? `Os valores lá em cima são só dos produtos (${real(r.vendido)} entregues). Somando o frete, foram ${real(r.vendido + cobrado)}; o frete é ${Math.round(r.vendido + cobrado ? cobrado / (r.vendido + cobrado) * 100 : 0)}% disso.`
     : "Nenhum pedido entregue no período.";
   const agrupar = chave => {
     const g = {};
@@ -718,7 +725,7 @@ function montarGraficoDias(entregues) {
   const dias = [];
   for (let d = new Date(de); d < ate && dias.length < 93; d = somaDias(d, 1)) dias.push(isoLocal(d));
   const porDia = Object.fromEntries(dias.map(d => [d, { total: 0, n: 0 }]));
-  entregues.forEach(p => { const k = isoLocal(new Date(p.criado_em)); if (porDia[k]) { porDia[k].total += Number(p.total); porDia[k].n++; } });
+  entregues.forEach(p => { const k = isoLocal(new Date(p.criado_em)); if (porDia[k]) { porDia[k].total += valorProdutos(p); porDia[k].n++; } });
   const max = Math.max(0, ...dias.map(d => porDia[d].total));
   const passo = Math.ceil(dias.length / 8); // no máximo ~8 datas escritas embaixo
   const fmtDia = d => d.split("-").reverse().slice(0, 2).join("/");
@@ -774,11 +781,11 @@ $("btnBaixarFin").onclick = () => {
   const nomeLoja = id => lojas.find(l => l.id === id)?.config.nome || "";
   const num = v => String(Number(v || 0).toFixed(2)).replace(".", ",");
   const cel = v => `"${String(v ?? "").replace(/"/g, '""')}"`;
-  const linhas = [["Data", "Loja", "Pedido", "Cliente", "Telefone", "Status", "Pago", "Pago em", "Pagamento", "Taxa entrega", "Total", "Data entrega", "Horário", "Bairro", "Cidade", "Itens"]];
+  const linhas = [["Data", "Loja", "Pedido", "Cliente", "Telefone", "Status", "Pago", "Pago em", "Pagamento", "Produtos", "Taxa entrega", "Total", "Data entrega", "Horário", "Bairro", "Cidade", "Itens"]];
   finPedidos.forEach(p => linhas.push([
     new Date(p.criado_em).toLocaleString("pt-BR"), nomeLoja(p.loja_id), p.numero, p.cliente?.nome, p.cliente?.telefone,
     STATUS[p.status] || p.status, p.pago ? "Sim" : "Não", p.pago_em ? new Date(p.pago_em).toLocaleString("pt-BR") : "",
-    p.pagamento, num(p.taxa), num(p.total), (p.entrega?.data || "").split("-").reverse().join("/"), p.entrega?.horario,
+    p.pagamento, num(valorProdutos(p)), num(p.taxa), num(p.total), (p.entrega?.data || "").split("-").reverse().join("/"), p.entrega?.horario,
     p.entrega?.bairro, p.entrega?.cidade, (p.itens || []).map(i => `${i.qtd}x ${i.nome}${i.detalhe ? ` (${i.detalhe})` : ""}`).join(" | "),
   ]));
   const csv = "﻿" + linhas.map(l => l.map(cel).join(";")).join("\r\n");
