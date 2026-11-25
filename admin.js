@@ -4,7 +4,14 @@ const $ = id => document.getElementById(id);
 const DIAS_CURTOS = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
 const CHAVE_LOJA_PAINEL = "agropet_painel_loja"; // última loja aberta pela master
 
-let perfil = null;   // { user_id, papel: 'master' | 'adm' | 'equipe', loja_id, email, nome, telefone, abas }
+let perfil = null;   // acesso da loja aberta: { user_id, papel: 'master' | 'adm' | 'equipe', loja_id, email, nome, telefone, abas }
+let acessos = [];    // todas as lojas que a pessoa acessa (uma linha de perfis por loja; a master tem uma linha sem loja)
+function ehMaster() { return acessos.some(a => a.papel === "master"); }
+function acessoDe(lojaId) { return acessos.find(a => a.loja_id === lojaId); }
+function podeNaLoja(a, aba) { return !!a && (a.papel === "master" || a.papel === "adm" || (a.abas || []).includes(aba)); }
+// lojas (da própria pessoa) onde ela pode ver a aba X
+function lojasComAba(aba) { return acessos.filter(a => a.loja_id && podeNaLoja(a, aba)).map(a => a.loja_id); }
+function aplicarAbas() { document.querySelectorAll(".abas [data-aba]").forEach(b => b.classList.toggle("oculto", !podeAba(b.dataset.aba))); }
 let lojas = [];      // lojas que essa pessoa pode editar
 let loja = null;     // loja aberta: { id, slug, ativa, config, produtos }
 let pedidos = [];
@@ -160,7 +167,7 @@ $("formLogin").addEventListener("submit", async ev => {
 
 $("btnSair").onclick = async () => {
   await db.auth.signOut();
-  perfil = null; loja = null; lojas = [];
+  perfil = null; loja = null; lojas = []; acessos = [];
   $("pontoConta").classList.add("oculto");
   pararVigia();
   mostrarLogin("login", "Você saiu do painel.", "ok");
@@ -172,23 +179,26 @@ async function entrar() {
   const ok = await ocupado("Entrando...", async () => {
     const { data: { user } } = await db.auth.getUser();
     if (!user) { mostrarLogin("login"); return false; }
-    perfil = checar(await db.rpc("aceitar_convite"));
-    if (!perfil || !perfil.papel) {
-      perfil = null;
+    const p0 = checar(await db.rpc("aceitar_convite")); // aceita os convites de todas as lojas desse e-mail
+    if (!p0 || !p0.papel) {
+      perfil = null; acessos = [];
       $("semAcessoTexto").innerHTML = !user.email_confirmed_at
         ? `Falta confirmar o e-mail <b>${escaparHtml(user.email)}</b>: abra o link que mandamos e depois toque no botão abaixo.`
         : `A conta <b>${escaparHtml(user.email)}</b> ainda não está ligada a nenhuma loja. Peça pra administradora da plataforma liberar esse e-mail e depois toque no botão abaixo.`;
       mostrarTela("sem-acesso");
       return false;
     }
+    acessos = checar(await db.from("perfis").select("*").eq("user_id", user.id).order("criado_em"));
+    if (!acessos.length) acessos = [p0];
+    perfil = acessos.find(a => a.papel === "master") || acessos[0];
     await carregarLojas();
     return true;
   });
   if (!ok) return;
   mostrarTela("painel");
-  document.querySelectorAll(".abas [data-aba]").forEach(b => b.classList.toggle("oculto", !podeAba(b.dataset.aba)));
-  let escolhida = perfil.papel !== "master" ? perfil.loja_id : null;
-  if (!escolhida) { try { escolhida = localStorage.getItem(CHAVE_LOJA_PAINEL); } catch (e) {} }
+  aplicarAbas();
+  let escolhida = null;
+  try { escolhida = localStorage.getItem(CHAVE_LOJA_PAINEL); } catch (e) {}
   if (!lojas.some(l => l.id === escolhida)) escolhida = lojas[0]?.id;
   if (escolhida) {
     await abrirLoja(escolhida);
@@ -197,19 +207,19 @@ async function entrar() {
     if (inicial) trocarAba(inicial);
     else { abrirConta("dados"); avisar("Sua conta ainda não tem nenhuma parte do painel liberada. Fale com o administrador da loja."); }
   }
-  else if (perfil.papel === "master") { trocarAba("lojas"); avisar("Crie a primeira loja"); }
+  else if (ehMaster()) { trocarAba("lojas"); avisar("Crie a primeira loja"); }
 }
 
 async function carregarLojas() {
   let q = db.from("lojas").select("id,slug,nome,config,ativa,criada_em").order("nome");
-  if (perfil.papel !== "master") q = q.eq("id", perfil.loja_id);
+  if (!ehMaster()) q = q.in("id", acessos.map(a => a.loja_id).filter(Boolean));
   lojas = checar(await q).map(lojaDoBanco);
   montarSeletor();
 }
 function montarSeletor() {
-  const master = perfil?.papel === "master";
-  $("seletorLoja").classList.toggle("oculto", !master);
-  $("nomeLojaFixo").classList.toggle("oculto", master);
+  const varias = ehMaster() || lojas.length > 1; // seletor pra quem tem mais de uma loja
+  $("seletorLoja").classList.toggle("oculto", !varias);
+  $("nomeLojaFixo").classList.toggle("oculto", varias);
   $("seletorLoja").innerHTML = lojas.map(l =>
     `<option value="${l.id}">${escaparHtml(l.config.nome)}${l.ativa ? "" : " (suspensa)"}</option>`).join("");
   if (loja) $("seletorLoja").value = loja.id;
@@ -218,6 +228,7 @@ function montarSeletor() {
 $("seletorLoja").onchange = ev => abrirLoja(ev.target.value);
 
 async function abrirLoja(id) {
+  if (!ehMaster()) perfil = acessoDe(id) || perfil; // cada loja tem o seu papel e as suas abas
   await ocupado("Abrindo loja...", async () => {
     const l = checar(await db.from("lojas").select("id,slug,nome,config,ativa").eq("id", id).single());
     const ps = checar(await db.from("produtos").select("*").eq("loja_id", id).order("ordem").order("criado_em", { ascending: false }));
@@ -225,6 +236,12 @@ async function abrirLoja(id) {
     try { localStorage.setItem(CHAVE_LOJA_PAINEL, id); } catch (e) {}
   });
   if (!loja) return;
+  aplicarAbas();
+  const abaAberta = document.querySelector(".abas [data-aba].ativo")?.dataset.aba;
+  if (abaAberta && !podeAba(abaAberta) && $("abaConta").classList.contains("oculto")) {
+    const outra = primeiraAba();
+    if (outra) trocarAba(outra);
+  }
   $("linkVerLoja").href = `index.html?loja=${encodeURIComponent(loja.slug)}`;
   montarSeletor();
   logoAtual = loja.config.logo || "";
@@ -256,7 +273,7 @@ const ABAS_PAINEL = ["produtos", "estoque", "pedidos", "financeiro", "capa", "en
 // o que cada um pode abrir (o banco confere de novo: isso aqui só esconde)
 function podeAba(aba) {
   if (!perfil) return false;
-  if (aba === "lojas") return perfil.papel === "master";
+  if (aba === "lojas") return ehMaster();
   return perfil.papel !== "equipe" || (perfil.abas || []).includes(aba);
 }
 function primeiraAba() { return ABAS_PAINEL.find(podeAba) || null; }
@@ -545,20 +562,23 @@ function periodoEscolhido() {
 
 async function carregarFinanceiro() {
   if (!loja) return;
-  const master = perfil?.papel === "master";
-  $("finEscopo").classList.toggle("oculto", !master);
-  const todas = master && $("finEscopo").value === "todas";
+  const varias = ehMaster() || lojasComAba("financeiro").length > 1; // somar só faz sentido com 2+ lojas liberadas
+  $("finEscopo").classList.toggle("oculto", !varias);
+  if (!varias) $("finEscopo").value = "loja";
+  $("finEscopo").options[1].textContent = ehMaster() ? "Todas as lojas" : "Todas as minhas lojas";
+  const todas = varias && $("finEscopo").value === "todas";
   const [de, ate] = periodoEscolhido();
   finPeriodoTxt = `${dataBr(de)} a ${dataBr(somaDias(ate, -1))}`;
   const ok = await ocupado("Somando...", async () => {
     let q = db.from("pedidos").select("*").gte("criado_em", de.toISOString()).lt("criado_em", ate.toISOString())
       .order("criado_em").limit(5000);
     if (!todas) q = q.eq("loja_id", loja.id);
+    else if (!ehMaster()) q = q.in("loja_id", lojasComAba("financeiro"));
     finPedidos = checar(await q);
     return true;
   });
   if (!ok) return;
-  $("finLegenda").textContent = `Pedidos feitos de ${finPeriodoTxt}${todas ? ", todas as lojas" : ` · ${loja.config.nome}`}.`;
+  $("finLegenda").textContent = `Pedidos feitos de ${finPeriodoTxt}${todas ? (ehMaster() ? ", todas as lojas" : ", todas as suas lojas") : ` · ${loja.config.nome}`}.`;
   montarFinanceiro();
 }
 
@@ -596,7 +616,7 @@ function montarFinanceiro() {
   ].join("");
 
   // por loja (só quando a master olha todas)
-  const todas = perfil?.papel === "master" && $("finEscopo").value === "todas";
+  const todas = !$("finEscopo").classList.contains("oculto") && $("finEscopo").value === "todas";
   $("finPorLojaBox").classList.toggle("oculto", !todas);
   if (todas) {
     const linhas = lojas.map(l => ({ l, r: resumoFin(finPedidos.filter(p => p.loja_id === l.id)) }))
@@ -812,14 +832,21 @@ async function montarAvisos() {
   try {
     const sub = await inscricaoDoAparelho();
     if (sub) {
-      const { data } = await db.from("push_inscricoes").select("id,loja_id").eq("endpoint", sub.endpoint).maybeSingle();
-      ligado = !!data && data.loja_id === loja?.id;
-      if (data && !ligado) outraLoja = lojas.find(l => l.id === data.loja_id)?.config.nome || "outra loja";
+      const { data } = await db.from("push_inscricoes").select("id,loja_id").eq("endpoint", sub.endpoint);
+      const ids = (data || []).map(r => r.loja_id);
+      if (ehMaster()) {
+        ligado = ids.includes(loja?.id);
+        if (ids.length && !ligado) outraLoja = lojas.find(l => l.id === ids[0])?.config.nome || "outra loja";
+      } else {
+        ligado = ids.length > 0;
+      }
     }
   } catch (e) { console.warn(e); }
   mostrar(ligado);
   det.textContent = ligado
-    ? (perfil?.papel === "master" ? `Você recebe aqui os pedidos de ${loja.config.nome}.` : "Você recebe aqui os pedidos da sua loja.")
+    ? (ehMaster() ? `Você recebe aqui os pedidos de ${loja.config.nome}.`
+      : lojasComAba("pedidos").length > 1 ? `Você recebe aqui os pedidos das suas ${lojasComAba("pedidos").length} lojas.`
+      : "Você recebe aqui os pedidos da sua loja.")
     : outraLoja ? `Este aparelho recebe os pedidos de ${outraLoja}. Ligar aqui troca para esta loja.`
     : "Receba uma notificação neste aparelho quando chegar pedido.";
 }
@@ -842,12 +869,15 @@ $("btnLigarAvisos").onclick = async () => {
     const j = sub.toJSON();
     const { data: { user } } = await db.auth.getUser();
     await db.from("push_inscricoes").delete().eq("endpoint", j.endpoint); // só apaga se for dela mesma
-    checar(await db.from("push_inscricoes").insert({
+    // master: só a loja aberta; os demais: todas as lojas em que cuidam dos pedidos
+    const destinos = ehMaster() ? [loja.id] : lojasComAba("pedidos");
+    if (!destinos.length) throw new Error("Sua conta não tem acesso aos pedidos de nenhuma loja.");
+    checar(await db.from("push_inscricoes").insert(destinos.map(lojaId => ({
       user_id: user.id,
-      loja_id: loja.id,
+      loja_id: lojaId,
       endpoint: j.endpoint, p256dh: j.keys.p256dh, auth: j.keys.auth,
       aparelho: navigator.userAgent.slice(0, 150),
-    }));
+    }))));
     return true;
   });
   await montarAvisos();
@@ -936,8 +966,12 @@ async function montarLojas() {
         </div>
         <div class="link"><a href="${base}${encodeURIComponent(l.slug)}" target="_blank" rel="noopener">${base}${escaparHtml(l.slug)}</a></div>
         <ul class="pessoas">
-          ${adms.map(p => `<li><span>👤 ${escaparHtml(p.email)}${p.papel === "equipe" ? ` <span class="pendente">equipe</span>` : ""}</span><button data-tirar-adm="${p.user_id}" data-email="${escaparHtml(p.email)}">tirar acesso</button></li>`).join("")}
-          ${pend.map(c => `<li><span>✉️ ${escaparHtml(c.email)} <span class="pendente">aguardando criar conta</span></span><button data-tirar-convite="${escaparHtml(c.email)}">cancelar</button></li>`).join("")}
+          ${adms.map(p => {
+            const outras = perfis.filter(x => x.user_id === p.user_id && x.loja_id && x.loja_id !== l.id)
+              .map(x => lojas.find(y => y.id === x.loja_id)?.config.nome).filter(Boolean);
+            return `<li><span>👤 ${escaparHtml(p.email)}${p.papel === "equipe" ? ` <span class="pendente">equipe</span>` : ""}${outras.length ? ` <span class="ajuda" style="margin:0">· também em: ${escaparHtml(outras.join(", "))}</span>` : ""}</span><button data-tirar-adm="${p.user_id}" data-loja="${l.id}" data-email="${escaparHtml(p.email)}">tirar acesso</button></li>`;
+          }).join("")}
+          ${pend.map(c => `<li><span>✉️ ${escaparHtml(c.email)} <span class="pendente">aguardando criar conta</span></span><button data-tirar-convite="${escaparHtml(c.email)}" data-loja="${l.id}">cancelar</button></li>`).join("")}
           ${!adms.length && !pend.length ? `<li class="ajuda" style="margin:0">Ninguém administra essa loja ainda.</li>` : ""}
         </ul>
         <div class="linha-convite">
@@ -969,13 +1003,19 @@ $("listaLojas").addEventListener("click", async ev => {
       checar(await db.from("convites").insert({ email, papel: "adm", loja_id: lojaId }));
       return true;
     });
-    if (r) { avisar("Acesso liberado: a pessoa cria a conta no painel com esse e-mail"); montarLojas(); }
+    if (r) { avisar("Acesso liberado. Se a pessoa já tem conta, a loja já aparece no painel dela; se não, ela cria a conta com esse e-mail."); montarLojas(); }
   } else if (tirarAdm) {
-    if (!confirm(`Tirar o acesso de ${tirarAdm.dataset.email} ao painel dessa loja?`)) return;
-    const r = await ocupado("Salvando...", async () => { checar(await db.from("perfis").delete().eq("user_id", tirarAdm.dataset.tirarAdm)); return true; });
+    if (!confirm(`Tirar o acesso de ${tirarAdm.dataset.email} a ESSA loja? As outras lojas dela continuam.`)) return;
+    const r = await ocupado("Salvando...", async () => {
+      checar(await db.from("perfis").delete().eq("user_id", tirarAdm.dataset.tirarAdm).eq("loja_id", tirarAdm.dataset.loja));
+      return true;
+    });
     if (r) { avisar("Acesso retirado"); montarLojas(); }
   } else if (tirarConv) {
-    const r = await ocupado("Salvando...", async () => { checar(await db.from("convites").delete().eq("email", tirarConv.dataset.tirarConvite)); return true; });
+    const r = await ocupado("Salvando...", async () => {
+      checar(await db.from("convites").delete().eq("email", tirarConv.dataset.tirarConvite).eq("loja_id", tirarConv.dataset.loja));
+      return true;
+    });
     if (r) { avisar("Convite cancelado"); montarLojas(); }
   } else if (ev.target.closest("[data-apagar-loja]")) {
     apagarLoja(ev.target.closest("[data-apagar-loja]").dataset.apagarLoja);
@@ -1375,7 +1415,9 @@ function montarMeusDados() {
   $("mdNome").value = perfil.nome || "";
   $("mdTel").value = perfil.telefone || "";
   $("mdEmail").value = perfil.email;
-  $("mdPapel").textContent = papelTexto() + (perfil.papel === "equipe" ? ` · pode acessar: ${nomesAbas(perfil.abas)}` : "");
+  const minhasLojas = acessos.filter(a => a.loja_id).map(a => lojas.find(l => l.id === a.loja_id)?.config.nome).filter(Boolean);
+  $("mdPapel").textContent = papelTexto() + (perfil.papel === "equipe" ? ` · pode acessar: ${nomesAbas(perfil.abas)}` : "")
+    + (minhasLojas.length > 1 ? ` · suas lojas: ${minhasLojas.join(", ")}` : "");
   // e-mail de pedido: só pra quem cuida dos pedidos de uma loja
   $("blocoAvisoEmail").classList.toggle("oculto", perfil.papel === "master" || !podeAba("pedidos"));
   $("mdAvisoEmail").checked = perfil.aviso_email !== false;
@@ -1383,8 +1425,11 @@ function montarMeusDados() {
 $("mdAvisoEmail").onchange = async () => {
   const aviso_email = $("mdAvisoEmail").checked;
   const r = await ocupado("Salvando...", async () =>
-    checar(await db.from("perfis").update({ aviso_email }).eq("user_id", perfil.user_id).select().single()));
-  if (r) { perfil = { ...perfil, ...r }; avisar(aviso_email ? "Você vai receber e-mail a cada pedido" : "E-mail de pedido desligado"); }
+    checar(await db.from("perfis").update({ aviso_email }).eq("user_id", perfil.user_id).select("id")));
+  if (r) {
+    acessos = acessos.map(a => ({ ...a, aviso_email })); perfil = { ...perfil, aviso_email };
+    avisar(aviso_email ? "Você vai receber e-mail a cada pedido" : "E-mail de pedido desligado");
+  }
   else $("mdAvisoEmail").checked = !aviso_email;
 };
 $("btnTesteEmail").onclick = async () => {
@@ -1406,8 +1451,8 @@ $("btnSalvarDados").onclick = async () => {
   const nome = $("mdNome").value.trim(), telefone = $("mdTel").value.trim();
   if (telefone && telefone.replace(/\D/g, "").length < 10) { avisar("Telefone com DDD"); return; }
   const r = await ocupado("Salvando...", async () =>
-    checar(await db.from("perfis").update({ nome, telefone }).eq("user_id", perfil.user_id).select().single()));
-  if (r) { perfil = { ...perfil, ...r }; avisar("Dados salvos"); }
+    checar(await db.from("perfis").update({ nome, telefone }).eq("user_id", perfil.user_id).select("id")));
+  if (r) { acessos = acessos.map(a => ({ ...a, nome, telefone })); perfil = { ...perfil, nome, telefone }; avisar("Dados salvos"); }
 };
 
 // ----- trocar senha (confere a senha atual antes) -----
@@ -1462,7 +1507,7 @@ $("listaEquipe").addEventListener("change", async ev => {
   if (!caixa) return;
   const abas = [...caixa.querySelectorAll("input:checked")].map(i => i.value);
   const r = await ocupado("Salvando...", async () => {
-    checar(await db.from("perfis").update({ abas }).eq("user_id", caixa.dataset.abasDe).select("user_id").single());
+    checar(await db.from("perfis").update({ abas }).eq("user_id", caixa.dataset.abasDe).eq("loja_id", loja.id).select("user_id").single());
     return true;
   });
   if (r) avisar(abas.length ? "Acesso atualizado" : "Acesso atualizado: essa pessoa não vê nenhuma parte do painel");
@@ -1474,13 +1519,13 @@ $("listaEquipe").addEventListener("click", async ev => {
   if (tirar) {
     if (!confirm(`Tirar o acesso de ${tirar.dataset.email} ao painel da loja?`)) return;
     const r = await ocupado("Salvando...", async () => {
-      checar(await db.from("perfis").delete().eq("user_id", tirar.dataset.tirarEquipe).select("user_id").single());
+      checar(await db.from("perfis").delete().eq("user_id", tirar.dataset.tirarEquipe).eq("loja_id", loja.id).select("user_id").single());
       return true;
     });
     if (r) { avisar("Acesso retirado"); montarEquipe(); }
   } else if (cancelar) {
     const r = await ocupado("Salvando...", async () => {
-      checar(await db.from("convites").delete().eq("email", cancelar.dataset.cancelarConvite));
+      checar(await db.from("convites").delete().eq("email", cancelar.dataset.cancelarConvite).eq("loja_id", loja.id));
       return true;
     });
     if (r) { avisar("Convite cancelado"); montarEquipe(); }
@@ -1503,7 +1548,7 @@ $("btnConvidarEquipe").onclick = async () => {
   });
   if (r) {
     $("eqNome").value = ""; $("eqEmail").value = ""; $("eqAbas").innerHTML = chipsAbas(["pedidos"]);
-    avisar("Acesso liberado: a pessoa cria a conta no painel com esse e-mail");
+    avisar("Acesso liberado. Se a pessoa já tem conta, já pode entrar; se não, ela cria a conta com esse e-mail.");
     montarEquipe();
   }
 };
@@ -1680,9 +1725,10 @@ $("btnLancarMensal").onclick = async () => {
 // bolinha na engrenagem quando o adm tem mensalidade em aberto
 async function atualizarPontoConta() {
   let n = 0;
-  if (perfil?.papel === "adm" && loja) {
+  const lojasAdm = acessos.filter(a => a.papel === "adm").map(a => a.loja_id);
+  if (lojasAdm.length) {
     const { count } = await db.from("mensalidades").select("id", { count: "exact", head: true })
-      .eq("loja_id", loja.id).eq("status", "aberta");
+      .in("loja_id", lojasAdm).eq("status", "aberta");
     n = count || 0;
   }
   $("pontoConta").classList.toggle("oculto", !n);
@@ -1695,7 +1741,12 @@ async function atualizarPontoConta() {
 // O pedido chega na hora pelo "tempo real" do Supabase; a cada 60 s uma conferência de reserva
 // pega o que tiver escapado (internet caiu, aba dormiu). Toca som, vibra e mostra um alerta até alguém ver.
 let pedidosVistos = new Set();
-let canalPedidos = null, vigiaLoja = null, alertaQtd = 0, timerSom = null, somCtx = null;
+let canalPedidos = null, vigiaChave = null, alertaQtd = 0, timerSom = null, somCtx = null, alertaLoja = null;
+// lojas vigiadas: a master vê a loja aberta; os demais, todas as lojas em que cuidam dos pedidos
+function lojasVigiadas() {
+  if (ehMaster()) return loja && podeAba("pedidos") ? [loja.id] : [];
+  return lojasComAba("pedidos");
+}
 const TITULO_PAGINA = document.title;
 
 function prepararSom() {
@@ -1724,7 +1775,9 @@ function tocarSom() {
 function mostrarAlertaPedido(p) {
   alertaQtd++;
   $("alertaTitulo").textContent = alertaQtd > 1 ? `🛒 ${alertaQtd} pedidos novos!` : "🛒 Pedido novo!";
-  $("alertaDetalhe").textContent = `${p.cliente?.nome || "Cliente"} · ${real(Number(p.total) || 0)}`;
+  const nomeLojaP = lojasVigiadas().length > 1 ? lojas.find(l => l.id === p.loja_id)?.config.nome : "";
+  $("alertaDetalhe").textContent = `${p.cliente?.nome || "Cliente"} · ${real(Number(p.total) || 0)}${nomeLojaP ? " · " + nomeLojaP : ""}`;
+  alertaLoja = p.loja_id;
   $("alertaPedido").classList.remove("oculto");
   document.title = `(${alertaQtd}) Pedido novo! · ${TITULO_PAGINA}`;
   tocarSom();
@@ -1734,44 +1787,53 @@ function mostrarAlertaPedido(p) {
   carregarPedidos(true);
 }
 function dispensarAlerta(irParaPedidos) {
+  const destino = alertaLoja;
+  alertaLoja = null;
   alertaQtd = 0;
   clearInterval(timerSom); timerSom = null;
   $("alertaPedido").classList.add("oculto");
   document.title = TITULO_PAGINA;
-  if (irParaPedidos && podeAba("pedidos")) { trocarAba("pedidos"); window.scrollTo({ top: 0, behavior: "smooth" }); }
+  if (!irParaPedidos) return;
+  const ir = () => { if (podeAba("pedidos")) { trocarAba("pedidos"); window.scrollTo({ top: 0, behavior: "smooth" }); } };
+  // pedido de outra loja da pessoa: abre essa loja primeiro
+  if (destino && loja && destino !== loja.id && lojas.some(l => l.id === destino)) abrirLoja(destino).then(ir); else ir();
 }
 $("btnVerAlerta").onclick = () => dispensarAlerta(true);
 $("btnFecharAlerta").onclick = () => dispensarAlerta(false);
 
 function pedidoChegou(p) {
-  if (!p || !loja || p.loja_id !== loja.id || p.status !== "novo" || pedidosVistos.has(p.id)) return;
+  if (!p || !lojasVigiadas().includes(p.loja_id) || p.status !== "novo" || pedidosVistos.has(p.id)) return;
   pedidosVistos.add(p.id);
   mostrarAlertaPedido(p);
 }
 
 async function conferirNovos(semAlerta = false) {
-  if (!loja || !podeAba("pedidos")) return;
-  const lojaId = loja.id;
+  const ids = lojasVigiadas();
+  if (!ids.length) return;
+  const chave = ids.join(",");
   const { data, error } = await db.from("pedidos").select("id,loja_id,status,cliente,total")
-    .eq("loja_id", lojaId).eq("status", "novo").order("criado_em", { ascending: false }).limit(50);
-  if (error || lojaId !== loja?.id) return;
+    .in("loja_id", ids).eq("status", "novo").order("criado_em", { ascending: false }).limit(50);
+  if (error || chave !== lojasVigiadas().join(",")) return;
   (data || []).forEach(p => semAlerta ? pedidosVistos.add(p.id) : pedidoChegou(p));
 }
 
 function pararVigia() {
   if (canalPedidos) { db.removeChannel(canalPedidos); canalPedidos = null; }
-  vigiaLoja = null;
+  vigiaChave = null;
   pedidosVistos = new Set();
   dispensarAlerta(false);
 }
 async function vigiarPedidos() {
-  if (!loja || !podeAba("pedidos")) { pararVigia(); return; }
-  if (vigiaLoja === loja.id && canalPedidos) return;
+  const ids = lojasVigiadas();
+  if (!ids.length) { pararVigia(); return; }
+  const chave = [...ids].sort().join(",");
+  if (vigiaChave === chave && canalPedidos) return; // já vigiando essas lojas
   pararVigia();
-  vigiaLoja = loja.id;
+  vigiaChave = chave;
   await conferirNovos(true); // o que já estava lá não toca
-  canalPedidos = db.channel("pedidos-" + vigiaLoja)
-    .on("postgres_changes", { event: "INSERT", schema: "public", table: "pedidos", filter: `loja_id=eq.${vigiaLoja}` },
+  const filtro = ids.length === 1 ? `loja_id=eq.${ids[0]}` : `loja_id=in.(${ids.join(",")})`;
+  canalPedidos = db.channel("pedidos-" + chave.slice(0, 60))
+    .on("postgres_changes", { event: "INSERT", schema: "public", table: "pedidos", filter: filtro },
       ev => pedidoChegou(ev.new))
     .subscribe();
 }
