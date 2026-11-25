@@ -12,7 +12,7 @@
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="Painel Agro Pet">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
-  <link rel="stylesheet" href="estilo.css">
+  <link rel="stylesheet" href="estilo.css?v=20261125">
   <style>
     body { padding-bottom: 40px; }
     .topo a { color: #fff; text-decoration: none; background: rgba(255,255,255,.15); border-radius: 999px; padding: 8px 14px; font-weight: 600; }
@@ -144,6 +144,7 @@
     .linha-convite { display: flex; gap: 6px; margin-top: 8px; }
     .linha-convite input { flex: 1; min-width: 0; border: 1px solid var(--borda); border-radius: 10px; padding: 8px 10px; }
     .linha-convite button { white-space: nowrap; padding: 8px 12px; }
+    .rodape-loja { display: flex; justify-content: flex-end; margin-top: 10px; padding-top: 8px; border-top: 1px solid #f0ede6; }
     .chave { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; }
     /* menu da engrenagem (minha conta) */
     .btn-conta { position: relative; border: 0; background: rgba(255,255,255,.18); color: #fff; width: 38px; height: 38px; border-radius: 50%; font-size: 19px; line-height: 1; display: grid; place-items: center; cursor: pointer; }
@@ -191,6 +192,40 @@
     @keyframes chama { 0%, 100% { box-shadow: 0 8px 28px rgba(0,0,0,.28); } 50% { box-shadow: 0 8px 28px rgba(0,0,0,.28), 0 0 0 6px rgba(224,116,43,.35); } }
     @media (prefers-reduced-motion: reduce) { .alerta-pedido { animation: none; } }
     .som-aviso { font-size: 13px; color: var(--texto-suave); display: flex; align-items: center; gap: 6px; }
+    /* estoque */
+    .resumo-estoque { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 12px; }
+    @media (max-width: 520px) { .resumo-estoque { grid-template-columns: repeat(2, 1fr); } }
+    .resumo-estoque button { background: #fff; border: 2px solid transparent; border-radius: 12px; box-shadow: var(--sombra); padding: 10px 12px; text-align: left; cursor: pointer; display: flex; flex-direction: column; gap: 2px; }
+    .resumo-estoque button.ativo { border-color: var(--verde); }
+    .resumo-estoque b { font-size: 22px; font-variant-numeric: tabular-nums; }
+    .resumo-estoque span { font-size: 13px; color: var(--texto-suave); }
+    .linha-est { background: #fff; border-radius: 12px; box-shadow: var(--sombra); padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; border-left: 4px solid transparent; }
+    .linha-est.falta { border-left-color: var(--erro); }
+    .linha-est.baixo { border-left-color: var(--laranja); }
+    .linha-est.ok { border-left-color: var(--verde); }
+    .topo-est { display: flex; align-items: center; gap: 12px; }
+    .topo-est .meio { flex: 1; min-width: 0; }
+    .topo-est .nome { font-weight: 600; }
+    .topo-est .sub { color: var(--texto-suave); font-size: 13px; }
+    .qtd-est { text-align: right; display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
+    .qtd-est b { font-size: 22px; font-variant-numeric: tabular-nums; line-height: 1; }
+    .selo-est { font-size: 11px; font-weight: 700; border-radius: 999px; padding: 2px 8px; }
+    .selo-est.falta { background: var(--erro); color: #fff; }
+    .selo-est.baixo { background: var(--laranja); color: #fff; }
+    .selo-est.ok { background: var(--verde-claro); color: var(--verde-escuro); }
+    .selo-est.sem { background: #eee; color: #777; }
+    .botoes-est { display: flex; gap: 8px; }
+    .botoes-est button { padding: 8px 12px; font-size: 14px; }
+    .form-est { border-top: 1px dashed var(--borda); padding-top: 10px; }
+    .form-est .campo input { width: 100%; }
+    .mov { display: flex; gap: 10px; align-items: baseline; padding: 7px 0; border-bottom: 1px solid #f0ede6; font-size: 14px; }
+    .mov:last-child { border-bottom: 0; }
+    .mov .quando { color: var(--texto-suave); font-size: 12px; white-space: nowrap; min-width: 78px; }
+    .mov .oque { flex: 1; min-width: 0; }
+    .mov .oque small { display: block; color: var(--texto-suave); }
+    .mov .delta { font-weight: 800; font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .mov .delta.mais { color: var(--verde-escuro); }
+    .mov .delta.menos { color: var(--erro); }
     /* tela de "salvando" */
     .carregando { position: fixed; inset: 0; z-index: 80; background: rgba(247,245,240,.75); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; font-weight: 600; }
     .girando { width: 36px; height: 36px; border-radius: 50%; border: 4px solid var(--verde-claro); border-top-color: var(--verde); animation: gira .8s linear infinite; }
@@ -242,12 +277,28 @@
 
     <div class="abas">
       <button class="chip ativo" data-aba="produtos">Produtos</button>
+      <button class="chip" data-aba="estoque">Estoque <span class="contador oculto" id="contEstoque"></span></button>
       <button class="chip" data-aba="pedidos">Pedidos <span class="contador oculto" id="contPedidos"></span></button>
       <button class="chip" data-aba="financeiro">Faturamento</button>
       <button class="chip" data-aba="capa">Identidade</button>
       <button class="chip" data-aba="entrega">Entrega</button>
       <button class="chip oculto" data-aba="lojas" id="abaLojasBtn">Lojas</button>
     </div>
+
+    <!-- ===== estoque ===== -->
+    <section id="abaEstoque" class="oculto">
+      <div class="resumo-estoque" id="estResumo"></div>
+      <div class="linha" style="align-items:center;margin-bottom:10px">
+        <input id="estBusca" type="search" placeholder="Buscar produto..." style="flex:1;border:1px solid var(--borda);border-radius:10px;padding:10px;background:#fff">
+        <button class="btn-secundario" id="btnAtualizarEstoque" style="padding:10px 14px">↻ Atualizar</button>
+      </div>
+      <p class="ajuda">Quando chegar mercadoria, toque em <b>+ Chegou</b>. Cada pedido tira do estoque sozinho e pedido cancelado devolve. Produto zerado aparece como <b>Esgotado</b> na loja.</p>
+      <div id="listaEstoque" class="lista-adm"></div>
+      <div class="secao-form" style="margin-top:14px">
+        <h3>Últimas movimentações</h3>
+        <div id="listaMov"></div>
+      </div>
+    </section>
 
     <!-- ===== pedidos ===== -->
     <section id="abaPedidos" class="oculto">
@@ -598,8 +649,8 @@
   <div class="aviso" id="aviso"></div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/dist/umd/supabase.min.js"></script>
-  <script src="dados.js"></script>
-  <script src="admin.js"></script>
-  <script src="pwa.js"></script>
+  <script src="dados.js?v=20261125"></script>
+  <script src="admin.js?v=20261125"></script>
+  <script src="pwa.js?v=20261125"></script>
 </body>
 </html>

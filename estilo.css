@@ -159,6 +159,10 @@ img { max-width: 100%; display: block; }
   padding: 9px; font-weight: 600;
 }
 .btn-add:hover { background: var(--verde-escuro); }
+.btn-add:disabled { background: #e4e1da; color: #8a877f; cursor: not-allowed; }
+.passo button:disabled { opacity: .35; cursor: not-allowed; }
+.restam { font-size: 12px; font-weight: 700; color: var(--laranja); margin-top: 2px; }
+.produto.esgotado .foto { opacity: .5; }
 .passo {
   margin-top: 8px; display: flex; align-items: center; justify-content: space-between;
   border: 1px solid var(--verde); border-radius: 10px; overflow: hidden;

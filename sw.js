@@ -3,7 +3,7 @@
 // (atualização chega pra todo mundo na hora); sem internet, usa a cópia guardada.
 // Chamadas pra fora (ViaCEP, WhatsApp) passam direto, sem cache.
 
-const VERSAO = "agropet-v2";
+const VERSAO = "agropet-v3";
 const ARQUIVOS = [
   "./", "./index.html", "./admin.html",
   "./estilo.css", "./dados.js", "./loja.js", "./admin.js", "./pwa.js",
@@ -28,7 +28,8 @@ self.addEventListener("fetch", ev => {
   const req = ev.request;
   if (req.method !== "GET" || new URL(req.url).origin !== self.location.origin) return;
   ev.respondWith(
-    fetch(req)
+    // "no-cache": sempre confere com o servidor (não usa cópia velha do navegador)
+    fetch(req.url, { cache: "no-cache", credentials: "same-origin" })
       .then(resp => {
         if (resp.ok) {
           const copia = resp.clone();

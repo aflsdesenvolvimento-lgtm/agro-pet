@@ -35,7 +35,9 @@ function copia(o) { return JSON.parse(JSON.stringify(o)); }
 function produtoDoBanco(r) {
   return { id: r.id, nome: r.nome, detalhe: r.detalhe || "", categoria: r.categoria || "Outros",
     preco: Number(r.preco), precoDe: r.preco_de == null ? null : Number(r.preco_de),
-    foto: r.foto || "", ativo: r.ativo, ordem: r.ordem || 0 };
+    foto: r.foto || "", ativo: r.ativo, ordem: r.ordem || 0,
+    estoque: r.estoque == null ? null : Number(r.estoque), // null = a loja não controla estoque desse produto
+    estoqueMinimo: Number(r.estoque_minimo || 0) };
 }
 function produtoParaBanco(p, lojaId) {
   return { loja_id: lojaId, nome: p.nome, detalhe: p.detalhe || "", categoria: p.categoria || "Outros",

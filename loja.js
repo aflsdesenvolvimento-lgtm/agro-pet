@@ -37,7 +37,13 @@ function totais() {
   const taxa = qtd > 0 ? Number(loja.config.taxaEntrega || 0) : 0;
   return { itens, qtd, subtotal, economia, taxa, total: subtotal + taxa };
 }
+function limiteDe(p) { return p && p.estoque != null ? Math.max(0, p.estoque) : Infinity; }
 function mudarQtd(id, delta) {
+  const p = produtoPorId(id);
+  if (delta > 0 && (carrinho[id] || 0) + delta > limiteDe(p)) {
+    avisar(limiteDe(p) > 0 ? `Só temos ${limiteDe(p)} em estoque` : "Produto esgotado");
+    return;
+  }
   const nova = Math.max(0, (carrinho[id] || 0) + delta);
   if (nova === 0) delete carrinho[id]; else carrinho[id] = nova;
   gravarCarrinho();
@@ -125,11 +131,15 @@ function montarGrade() {
     const qtd = carrinho[p.id] || 0;
     const promo = emPromocao(p);
     const foto = p.foto ? `<img src="${escaparHtml(p.foto)}" alt="">` : iconeDe(p.categoria);
+    const limite = limiteDe(p);
+    const esgotado = limite <= 0;
     const botao = qtd
-      ? `<div class="passo"><button data-menos="${p.id}" aria-label="Diminuir">−</button><span>${qtd}</span><button data-mais="${p.id}" aria-label="Aumentar">+</button></div>`
+      ? `<div class="passo"><button data-menos="${p.id}" aria-label="Diminuir">−</button><span>${qtd}</span><button data-mais="${p.id}" aria-label="Aumentar" ${qtd >= limite ? "disabled" : ""}>+</button></div>`
+      : esgotado ? `<button class="btn-add" disabled>Esgotado</button>`
       : `<button class="btn-add" data-mais="${p.id}">Adicionar</button>`;
+    const restam = !esgotado && limite <= 5 ? `<div class="restam">Só ${limite === 1 ? "resta 1" : `restam ${limite}`}</div>` : "";
     return `
-      <article class="produto">
+      <article class="produto ${esgotado ? "esgotado" : ""}">
         ${promo ? `<span class="selo">-${descontoPct(p)}%</span>` : ""}
         <div class="foto">${foto}</div>
         <div class="info">
@@ -139,6 +149,7 @@ function montarGrade() {
             ${promo ? `<div class="preco-de">de ${real(p.precoDe)}</div>` : ""}
             <div class="preco ${promo ? "promo" : ""}">${promo ? "por " : ""}${real(p.preco)}</div>
           </div>
+          ${restam}
           ${botao}
         </div>
       </article>`;
@@ -188,7 +199,7 @@ function montarPainel() {
         <div class="meio">
           <div class="nome">${escaparHtml(p.nome)}</div>
           <div class="sub">${escaparHtml(p.detalhe)} · ${real(p.preco)} cada</div>
-          <div class="passo"><button data-menos="${p.id}" aria-label="Diminuir">−</button><span>${qtd}</span><button data-mais="${p.id}" aria-label="Aumentar">+</button></div>
+          <div class="passo"><button data-menos="${p.id}" aria-label="Diminuir">−</button><span>${qtd}</span><button data-mais="${p.id}" aria-label="Aumentar" ${qtd >= limiteDe(p) ? "disabled" : ""}>+</button></div>
         </div>
         <div class="total-item">${real(p.preco * qtd)}</div>
       </div>`).join("")
@@ -399,6 +410,14 @@ async function enviarPedido() {
     pagamento: pedido.pagamento, troco: pedido.troco, obs: pedido.obs,
   });
   enviando = false;
+  if (error && /ESTOQUE_INSUFICIENTE/.test(error.message || "")) {
+    const qual = (error.message.match(/ESTOQUE_INSUFICIENTE:\s*(.+?)\s*\(/) || [])[1] || "Um produto";
+    if (botao) { botao.disabled = false; botao.textContent = "Enviar pedido"; }
+    await carregarDoBanco(); // pega o estoque atual e ajusta o carrinho
+    passo = "itens"; montarPainel();
+    avisar(`${qual} acabou de esgotar ou não tem essa quantidade. Confira o carrinho.`);
+    return;
+  }
   if (error) {
     console.warn("Pedido não foi guardado no banco:", error.message);
     if (botao) { botao.disabled = false; botao.textContent = "Enviar pedido"; }
@@ -489,10 +508,20 @@ function montarTudo() {
   montarChips();
   atualizarTudo();
 }
+// produto esgotou ou baixou o estoque enquanto estava no carrinho: corrige e avisa
+function ajustarCarrinhoAoEstoque() {
+  let mudou = false;
+  for (const [id, qtd] of Object.entries(carrinho)) {
+    const lim = limiteDe(produtoPorId(id));
+    if (qtd > lim) { if (lim > 0) carrinho[id] = lim; else delete carrinho[id]; mudou = true; }
+  }
+  if (mudou) { gravarCarrinho(); avisar("Alguns itens do carrinho esgotaram e foram ajustados"); }
+  return mudou;
+}
 async function carregarDoBanco() {
   try {
     const v = await buscarVitrine(SLUG);
-    if (v) { loja = v; estadoCarga = "ok"; }
+    if (v) { loja = v; estadoCarga = "ok"; ajustarCarrinhoAoEstoque(); }
     else { estadoCarga = "sem-loja"; loja.produtos = []; }
   } catch (e) {
     console.warn("Não deu pra buscar a loja:", e.message || e);

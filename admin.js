@@ -234,6 +234,8 @@ async function abrirLoja(id) {
   if (podeAba("pedidos")) carregarPedidos(true);
   vigiarPedidos();
   if (!$("abaFinanceiro").classList.contains("oculto")) carregarFinanceiro();
+  if (!$("abaEstoque").classList.contains("oculto")) montarEstoque();
+  contarEstoqueBaixo();
   // master trocou de loja com a Equipe/Mensalidade aberta: recarrega pra loja nova
   if (!$("abaConta").classList.contains("oculto") && (contaAtual === "equipe" || contaAtual === "mensalidade")) abrirConta(contaAtual);
   atualizarPontoConta();
@@ -250,7 +252,7 @@ async function salvarConfig(msgOk) {
 }
 
 // ================= abas =================
-const ABAS_PAINEL = ["produtos", "pedidos", "financeiro", "capa", "entrega", "lojas"];
+const ABAS_PAINEL = ["produtos", "estoque", "pedidos", "financeiro", "capa", "entrega", "lojas"];
 // o que cada um pode abrir (o banco confere de novo: isso aqui só esconde)
 function podeAba(aba) {
   if (!perfil) return false;
@@ -265,6 +267,7 @@ function trocarAba(nome) {
     $("aba" + a[0].toUpperCase() + a.slice(1)).classList.toggle("oculto", a !== nome));
   if (nome === "pedidos") { carregarPedidos(); montarAvisos(); }
   if (nome === "financeiro") carregarFinanceiro();
+  if (nome === "estoque") montarEstoque();
   if (nome === "lojas") montarLojas();
 }
 document.querySelectorAll("[data-aba]").forEach(b => b.onclick = () => trocarAba(b.dataset.aba));
@@ -879,6 +882,7 @@ async function montarLojas() {
           <input type="email" placeholder="e-mail de quem vai administrar" data-email-convite="${l.id}">
           <button class="btn-secundario" data-convidar="${l.id}">Liberar acesso</button>
         </div>
+        <div class="rodape-loja"><button class="link-perigo" data-apagar-loja="${l.id}">Apagar loja</button></div>
       </div>`;
   }).join("") || `<div class="vazio">Nenhuma loja ainda.</div>`;
 }
@@ -911,8 +915,60 @@ $("listaLojas").addEventListener("click", async ev => {
   } else if (tirarConv) {
     const r = await ocupado("Salvando...", async () => { checar(await db.from("convites").delete().eq("email", tirarConv.dataset.tirarConvite)); return true; });
     if (r) { avisar("Convite cancelado"); montarLojas(); }
+  } else if (ev.target.closest("[data-apagar-loja]")) {
+    apagarLoja(ev.target.closest("[data-apagar-loja]").dataset.apagarLoja);
   }
 });
+
+// apaga a loja inteira: produtos, pedidos, acessos, convites, mensalidades e arquivos. Não tem volta.
+async function contar(tabela, lojaId) {
+  const { count } = await db.from(tabela).select("id", { count: "exact", head: true }).eq("loja_id", lojaId);
+  return count || 0;
+}
+async function apagarPasta(balde, lojaId) {
+  for (let i = 0; i < 20; i++) { // até 20 rodadas de 100 arquivos
+    const { data, error } = await db.storage.from(balde).list(lojaId, { limit: 100 });
+    if (error || !data?.length) return;
+    const caminhos = data.filter(f => f.name && !f.name.startsWith(".")).map(f => `${lojaId}/${f.name}`);
+    if (!caminhos.length) return;
+    const { error: e2 } = await db.storage.from(balde).remove(caminhos);
+    if (e2) { console.warn("arquivos não apagados", e2.message); return; }
+  }
+}
+async function apagarLoja(id) {
+  const l = lojas.find(x => x.id === id);
+  if (!l) return;
+  const nome = l.config.nome;
+  const n = await ocupado("Conferindo a loja...", async () => ({
+    produtos: await contar("produtos", id), pedidos: await contar("pedidos", id), mensalidades: await contar("mensalidades", id),
+  }));
+  if (!n) return;
+  const digitado = prompt(
+    `Apagar a loja "${nome}" PARA SEMPRE?\n\n` +
+    `Vai junto: ${n.produtos} produto(s), ${n.pedidos} pedido(s), ${n.mensalidades} mensalidade(s), as fotos, ` +
+    `e o acesso de quem administra (a conta da pessoa continua existindo, só fica sem loja).\n` +
+    `Não dá pra desfazer. Se só quiser esconder dos clientes, use "No ar".\n\n` +
+    `Pra confirmar, digite o nome da loja:`);
+  if (digitado == null) return;
+  if (digitado.trim().toLowerCase() !== String(nome).trim().toLowerCase()) { avisar("Nome diferente: a loja NÃO foi apagada"); return; }
+  const r = await ocupado("Apagando a loja...", async () => {
+    checar(await db.from("lojas").delete().eq("id", id).select("id").single());
+    await apagarPasta("imagens", id);   // fotos dos produtos, banners e logo
+    await apagarPasta("cobrancas", id); // notas e boletos da mensalidade
+    return true;
+  });
+  if (!r) return;
+  try { if (localStorage.getItem(CHAVE_LOJA_PAINEL) === id) localStorage.removeItem(CHAVE_LOJA_PAINEL); } catch (e) {}
+  await carregarLojas();
+  if (loja?.id === id) {
+    loja = null;
+    pararVigia();
+    if (lojas.length) await abrirLoja(lojas[0].id);
+  }
+  montarSeletor();
+  trocarAba("lojas");
+  avisar(`Loja "${nome}" apagada`);
+}
 
 // ================= capa: banners =================
 const CORES = ["#2f6b3a", "#1f5f8b", "#e0742b", "#b3261e", "#7b4fa0", "#8a5a2b", "#1f2a1f"];
@@ -1163,7 +1219,7 @@ document.addEventListener("keydown", ev => {
 });
 
 // ================= minha conta (menu da engrenagem) =================
-const ABAS_EQUIPE = [["produtos", "Produtos"], ["pedidos", "Pedidos"], ["financeiro", "Faturamento"], ["capa", "Identidade"], ["entrega", "Entrega"]];
+const ABAS_EQUIPE = [["produtos", "Produtos"], ["estoque", "Estoque"], ["pedidos", "Pedidos"], ["financeiro", "Faturamento"], ["capa", "Identidade"], ["entrega", "Entrega"]];
 const NOMES_PAPEL = { master: "Master da plataforma", adm: "Administrador(a) da loja", equipe: "Equipe da loja" };
 const MESES = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"];
 let contaAtual = null;
@@ -1601,6 +1657,147 @@ async function vigiarPedidos() {
 // reserva: confere a cada 60 s e quando o painel volta a aparecer na tela
 setInterval(() => conferirNovos(), 60000);
 document.addEventListener("visibilitychange", () => { if (!document.hidden) conferirNovos(); });
+
+// ================= estoque =================
+let movimentos = [], filtroEstoque = "todos", abertoEstoque = null; // abertoEstoque = { id, modo: 'chegou' | 'ajustar' }
+const TIPOS_MOV = { entrada: "Chegou", ajuste: "Ajuste de contagem", venda: "Venda", devolucao: "Devolvido (pedido cancelado)" };
+
+function situacaoEstoque(p) {
+  if (p.estoque == null) return ["sem", "Não controla"];
+  if (p.estoque <= 0) return ["falta", p.estoque < 0 ? "Faltando" : "Esgotado"];
+  if (p.estoque <= (p.estoqueMinimo || 0)) return ["baixo", "Baixo"];
+  return ["ok", "Em estoque"];
+}
+// bolinha na aba: quantos produtos esgotados ou abaixo do mínimo
+function contarEstoqueBaixo() {
+  const n = (loja?.produtos || []).filter(p => ["falta", "baixo"].includes(situacaoEstoque(p)[0])).length;
+  $("contEstoque").textContent = n;
+  $("contEstoque").classList.toggle("oculto", !n);
+}
+async function montarEstoque(recarregar = true) {
+  if (!loja) return;
+  if (recarregar) {
+    const lojaId = loja.id;
+    const ok = await ocupado("Carregando estoque...", async () => {
+      const ps = checar(await db.from("produtos").select("id,estoque,estoque_minimo").eq("loja_id", lojaId));
+      ps.forEach(r => {
+        const p = loja.produtos.find(x => x.id === r.id);
+        if (p) { p.estoque = r.estoque == null ? null : Number(r.estoque); p.estoqueMinimo = Number(r.estoque_minimo || 0); }
+      });
+      movimentos = checar(await db.from("estoque_movimentos").select("*").eq("loja_id", lojaId)
+        .order("criado_em", { ascending: false }).limit(40));
+      return true;
+    });
+    if (!ok || lojaId !== loja?.id) return;
+  }
+  const ps = loja.produtos;
+  const cont = { falta: 0, baixo: 0, ok: 0, sem: 0 };
+  ps.forEach(p => cont[situacaoEstoque(p)[0]]++);
+  $("estResumo").innerHTML = [["falta", "Esgotados"], ["baixo", "Estoque baixo"], ["ok", "Em estoque"], ["todos", "Todos os produtos"]]
+    .map(([f, t]) => `<button data-filtro-est="${f}" class="${filtroEstoque === f ? "ativo" : ""}"><b>${f === "todos" ? ps.length : cont[f]}</b><span>${t}</span></button>`).join("");
+  const termo = slugDe($("estBusca").value).replace(/-/g, " ");
+  const ordem = { falta: 0, baixo: 1, ok: 2, sem: 3 };
+  const lista = ps.filter(p => {
+    if (filtroEstoque !== "todos" && situacaoEstoque(p)[0] !== filtroEstoque) return false;
+    return !termo || slugDe(`${p.nome} ${p.detalhe} ${p.categoria}`).replace(/-/g, " ").includes(termo);
+  }).sort((a, b) => ordem[situacaoEstoque(a)[0]] - ordem[situacaoEstoque(b)[0]] || a.nome.localeCompare(b.nome));
+  $("listaEstoque").innerHTML = lista.map(linhaEstoque).join("")
+    || `<div class="vazio" style="padding:20px 0">${ps.length ? "Nenhum produto nesse filtro." : "Cadastre produtos na aba Produtos primeiro."}</div>`;
+  const nomeDe = id => ps.find(p => p.id === id)?.nome || "Produto apagado";
+  $("listaMov").innerHTML = movimentos.map(m => `
+    <div class="mov">
+      <span class="quando">${new Date(m.criado_em).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}</span>
+      <span class="oque">${escaparHtml(nomeDe(m.produto_id))}<small>${TIPOS_MOV[m.tipo] || m.tipo}${m.obs ? " · " + escaparHtml(m.obs) : ""} · ficou ${m.saldo}</small></span>
+      <span class="delta ${m.quantidade >= 0 ? "mais" : "menos"}">${m.quantidade > 0 ? "+" : ""}${m.quantidade}</span>
+    </div>`).join("") || `<p class="ajuda" style="margin:0">Nada ainda.</p>`;
+  contarEstoqueBaixo();
+}
+function linhaEstoque(p) {
+  const [cls, txt] = situacaoEstoque(p);
+  const modo = abertoEstoque?.id === p.id ? abertoEstoque.modo : null;
+  const sub = [p.detalhe, p.estoque != null && p.estoqueMinimo ? `mínimo ${p.estoqueMinimo}` : "", p.ativo ? "" : "fora da loja"].filter(Boolean).join(" · ");
+  const form = modo === "chegou" ? `
+    <div class="form-est">
+      <div class="linha">
+        <div class="campo"><label for="estQtd">Quantidade que chegou</label><input id="estQtd" type="number" min="1" step="1" inputmode="numeric"></div>
+        <div class="campo"><label for="estObs">Observação (opcional)</label><input id="estObs" maxlength="200" placeholder="Ex: nota 1234, fornecedor"></div>
+      </div>
+      <div class="botoes"><button class="btn-principal" data-est-salvar="chegou">Somar ao estoque</button><button class="btn-secundario" data-est-cancelar>Cancelar</button></div>
+    </div>` : modo === "ajustar" ? `
+    <div class="form-est">
+      <label class="chk"><input type="checkbox" id="estControlar" ${p.estoque != null || !abertoEstoque.desligado ? "checked" : ""}> Controlar o estoque deste produto</label>
+      <div class="linha">
+        <div class="campo"><label for="estContagem">Quantidade que tem agora</label><input id="estContagem" type="number" min="0" step="1" inputmode="numeric" value="${p.estoque ?? ""}"></div>
+        <div class="campo"><label for="estMinimo">Avisar quando ficar em</label><input id="estMinimo" type="number" min="0" step="1" inputmode="numeric" value="${p.estoqueMinimo || 0}"></div>
+      </div>
+      <div class="campo"><label for="estObs">Motivo (opcional)</label><input id="estObs" maxlength="200" placeholder="Ex: contagem do mês, avaria"></div>
+      <div class="botoes"><button class="btn-principal" data-est-salvar="ajustar">Salvar</button><button class="btn-secundario" data-est-cancelar>Cancelar</button></div>
+    </div>` : "";
+  return `
+    <div class="linha-est ${cls}" data-est-produto="${p.id}">
+      <div class="topo-est">
+        <div class="meio"><div class="nome">${escaparHtml(p.nome)}</div><div class="sub">${escaparHtml(sub)}</div></div>
+        <div class="qtd-est"><b>${p.estoque == null ? "—" : p.estoque}</b><span class="selo-est ${cls}">${txt}</span></div>
+      </div>
+      ${modo ? "" : `<div class="botoes-est">
+        <button class="btn-principal" data-est-abrir="chegou" data-id="${p.id}">+ Chegou</button>
+        <button class="btn-secundario" data-est-abrir="ajustar" data-id="${p.id}">${p.estoque == null ? "Controlar estoque" : "Ajustar"}</button>
+      </div>`}
+      ${form}
+    </div>`;
+}
+function inteiro(v) { const n = Number(String(v).trim()); return String(v).trim() !== "" && Number.isInteger(n) ? n : null; }
+
+$("abaEstoque").addEventListener("click", async ev => {
+  const filtro = ev.target.closest("[data-filtro-est]");
+  const abrir = ev.target.closest("[data-est-abrir]");
+  const salvar = ev.target.closest("[data-est-salvar]");
+  if (filtro) { filtroEstoque = filtro.dataset.filtroEst === filtroEstoque ? "todos" : filtro.dataset.filtroEst; abertoEstoque = null; montarEstoque(false); return; }
+  if (abrir) {
+    abertoEstoque = { id: abrir.dataset.id, modo: abrir.dataset.estAbrir };
+    montarEstoque(false);
+    setTimeout(() => ($("estQtd") || $("estContagem"))?.focus(), 0);
+    return;
+  }
+  if (ev.target.closest("[data-est-cancelar]")) { abertoEstoque = null; montarEstoque(false); return; }
+  if (ev.target.closest("#btnAtualizarEstoque")) { montarEstoque(); return; }
+  if (!salvar || !abertoEstoque) return;
+  const p = loja.produtos.find(x => x.id === abertoEstoque.id);
+  if (!p) return;
+  const obs = ($("estObs")?.value || "").trim();
+  if (salvar.dataset.estSalvar === "chegou") {
+    const qtd = inteiro($("estQtd").value);
+    if (!qtd || qtd <= 0) { avisar("Digite quantas unidades chegaram"); return; }
+    const r = await ocupado("Somando ao estoque...", async () =>
+      checar(await db.rpc("mover_estoque", { p_produto: p.id, p_tipo: "entrada", p_qtd: qtd, p_obs: obs })));
+    if (r == null) return;
+    avisar(`+${qtd} ${p.nome}: agora tem ${r}`);
+  } else {
+    const controlar = $("estControlar").checked;
+    const minimo = inteiro($("estMinimo").value) ?? 0;
+    const contagem = inteiro($("estContagem").value);
+    if (minimo < 0) { avisar("O mínimo não pode ser negativo"); return; }
+    if (controlar && (contagem == null || contagem < 0)) { avisar("Digite quantas unidades tem agora"); return; }
+    const r = await ocupado("Salvando...", async () => {
+      checar(await db.rpc("configurar_estoque", { p_produto: p.id, p_minimo: minimo, p_controlar: controlar }));
+      if (controlar && contagem !== p.estoque) {
+        checar(await db.rpc("mover_estoque", { p_produto: p.id, p_tipo: "ajuste", p_qtd: contagem, p_obs: obs }));
+      }
+      return true;
+    });
+    if (!r) return;
+    avisar(controlar ? `${p.nome}: estoque ${contagem}` : `${p.nome}: estoque não é mais controlado`);
+  }
+  abertoEstoque = null;
+  montarEstoque();
+});
+$("abaEstoque").addEventListener("keydown", ev => {
+  if (ev.key === "Enter" && ev.target.matches(".form-est input:not([type=checkbox])")) {
+    ev.preventDefault();
+    document.querySelector("[data-est-salvar]")?.click();
+  }
+});
+$("estBusca").oninput = () => { abertoEstoque = null; montarEstoque(false); };
 
 // ================= início =================
 let recuperandoSenha = false;
