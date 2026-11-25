@@ -161,6 +161,25 @@ img { max-width: 100%; display: block; }
 .btn-add:hover { background: var(--verde-escuro); }
 .btn-add:disabled { background: #e4e1da; color: #8a877f; cursor: not-allowed; }
 .passo button:disabled { opacity: .35; cursor: not-allowed; }
+/* meus pedidos (cliente) */
+#btnMeusPedidos { position: relative; margin-right: 6px; }
+.ponto-pedidos { position: absolute; top: 4px; right: 4px; width: 9px; height: 9px; border-radius: 50%; background: var(--laranja); border: 2px solid #fff; }
+@media (max-width: 480px) { #btnMeusPedidos .txt { display: none; } }
+.meu-pedido { background: #fff; border: 1px solid var(--borda); border-radius: 12px; padding: 12px; margin-bottom: 10px; display: flex; flex-direction: column; gap: 6px; }
+.meu-pedido .cab { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.meu-pedido .sub { font-size: 13px; color: var(--texto-suave); }
+.meu-pedido ul { margin: 0; padding-left: 18px; font-size: 14px; }
+.meu-pedido .rodape-pedido { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+.meu-pedido .rodape-pedido .btn-secundario { padding: 8px 12px; width: auto; }
+.status-cli { font-size: 12px; font-weight: 700; border-radius: 999px; padding: 2px 10px; white-space: nowrap; }
+.status-cli.st-recebido { background: var(--laranja); color: #fff; }
+.status-cli.st-confirmado { background: #1f5f8b; color: #fff; }
+.status-cli.st-entregue { background: var(--verde-claro); color: var(--verde-escuro); }
+.status-cli.st-cancelado { background: #eee; color: #777; }
+.linha-tempo { display: flex; gap: 4px; font-size: 12px; font-weight: 600; }
+.linha-tempo span { flex: 1; text-align: center; padding: 4px 2px; border-radius: 6px; background: #f0ede6; color: var(--texto-suave); }
+.linha-tempo span.feito { background: var(--verde); color: #fff; }
+.linha-tempo.cancelado { color: var(--texto-suave); font-weight: 400; }
 .frete-faixa { display: block; font-size: 11px; font-weight: 600; opacity: .85; margin-top: 2px; }
 .restam { font-size: 12px; font-weight: 700; color: var(--laranja); margin-top: 2px; }
 .produto.esgotado .foto { opacity: .5; }

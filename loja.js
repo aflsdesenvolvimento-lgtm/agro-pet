@@ -10,7 +10,7 @@ let estadoCarga = loja.id ? "ok" : "carregando"; // carregando | ok | sem-loja |
 let carrinho = lerCarrinho();      // { idProduto: quantidade }
 let categoriaAtiva = "Todos";
 let termoBusca = "";
-let passo = "itens";               // itens | entrega | ok
+let passo = "itens";               // itens | entrega | ok | pedidos
 
 const $ = id => document.getElementById(id);
 const DIAS = ["domingo", "segunda", "terça", "quarta", "quinta", "sexta", "sábado"];
@@ -208,7 +208,7 @@ function fecharPainel() {
   $("painel").classList.add("oculto");
   $("fundo").classList.add("oculto");
   document.body.style.overflow = "";
-  if (passo === "ok") passo = "itens";
+  if (passo === "ok" || passo === "pedidos") passo = "itens";
   atualizarBarra();
 }
 
@@ -216,8 +216,9 @@ function montarPainel() {
   $("viewItens").classList.toggle("oculto", passo !== "itens");
   $("viewEntrega").classList.toggle("oculto", passo !== "entrega");
   $("viewOk").classList.toggle("oculto", passo !== "ok");
+  $("viewPedidos").classList.toggle("oculto", passo !== "pedidos");
   $("btnVoltar").classList.toggle("oculto", passo !== "entrega");
-  $("painelTitulo").textContent = { itens: "Seu carrinho", entrega: "Entrega", ok: "Pedido enviado" }[passo];
+  $("painelTitulo").textContent = { itens: "Seu carrinho", entrega: "Entrega", ok: "Pedido enviado", pedidos: "Meus pedidos" }[passo];
 
   const t = totais();
   if (passo === "itens") {
@@ -250,7 +251,14 @@ function montarPainel() {
   }
 
   if (passo === "ok") {
-    $("rodapePainel").innerHTML = `<button class="btn-principal" id="btnContinuar">Voltar pra loja</button>`;
+    $("rodapePainel").innerHTML = `
+      <button class="btn-principal" id="btnContinuar">Voltar pra loja</button>
+      <button class="btn-secundario" id="btnAcompanhar">📋 Acompanhar meus pedidos</button>`;
+  }
+
+  if (passo === "pedidos") {
+    montarMeusPedidos();
+    $("rodapePainel").innerHTML = `<button class="btn-secundario" id="btnContinuar">Voltar pra loja</button>`;
   }
 }
 
@@ -411,6 +419,7 @@ async function enviarPedido() {
   const t = totais();
   if (!t.itens.length) { abrirPainel("itens"); return; }
   const pedido = {
+    codigo: crypto.randomUUID(), // código secreto: só este celular consegue acompanhar o pedido
     numero: Date.now().toString(36).toUpperCase(),
     criadoEm: new Date().toISOString(),
     cliente: { nome: $("fNome").value.trim(), telefone: $("fTel").value.trim() },
@@ -435,7 +444,7 @@ async function enviarPedido() {
   if (botao) { botao.disabled = true; botao.textContent = "Enviando pedido..."; }
   enviando = true;
   const { error } = await db.from("pedidos").insert({
-    loja_id: loja.id, numero: pedido.numero, cliente: pedido.cliente, itens: pedido.itens,
+    loja_id: loja.id, codigo: pedido.codigo, numero: pedido.numero, cliente: pedido.cliente, itens: pedido.itens,
     taxa: pedido.taxa, total: pedido.total, entrega: pedido.entrega,
     pagamento: pedido.pagamento, troco: pedido.troco, obs: pedido.obs,
   });
@@ -455,6 +464,10 @@ async function enviarPedido() {
     return;
   }
 
+  guardarMeuPedido({
+    codigo: pedido.codigo, numero: pedido.numero, criadoEm: pedido.criadoEm, total: pedido.total, taxa: pedido.taxa,
+    itens: pedido.itens, entrega: { data: pedido.entrega.data, horario: pedido.entrega.horario },
+  });
   carrinho = {};
   gravarCarrinho();
   passo = "ok";
@@ -463,10 +476,94 @@ async function enviarPedido() {
       <div class="grande">🐾</div>
       <h3>Pedido enviado!</h3>
       <p>A loja já recebeu seu pedido <b>${escaparHtml(pedido.numero)}</b>. Se precisar, ela fala com você pelo telefone que você informou.</p>
+      <p class="ajuda" style="margin:0">Acompanhe a situação em <b>📋 Meus pedidos</b>, no topo da loja.</p>
       <div class="resumo-pedido">${escaparHtml(texto)}</div>
     </div>`;
   montarPainel();
   atualizarTudo();
+}
+
+// ---------------- meus pedidos (sem conta: guardados neste celular) ----------------
+const CHAVE_MEUS = "agropet_meus_pedidos_" + SLUG;
+let statusPedidos = {};   // codigo -> situação atual vinda da loja
+let timerPedidos = null;
+const ROTULO_STATUS = { novo: ["st-recebido", "Recebido"], confirmado: ["st-confirmado", "Confirmado"], entregue: ["st-entregue", "Entregue"], cancelado: ["st-cancelado", "Cancelado"] };
+
+function lerMeusPedidos() { try { return JSON.parse(localStorage.getItem(CHAVE_MEUS)) || []; } catch (e) { return []; } }
+function guardarMeuPedido(p) {
+  const lista = [p, ...lerMeusPedidos().filter(x => x.codigo !== p.codigo)].slice(0, 50);
+  try { localStorage.setItem(CHAVE_MEUS, JSON.stringify(lista)); } catch (e) { /* sem espaço: segue */ }
+  atualizarBotaoPedidos();
+}
+function atualizarBotaoPedidos() {
+  const lista = lerMeusPedidos();
+  $("btnMeusPedidos").classList.toggle("oculto", !lista.length);
+  const andamento = lista.filter(p => ["novo", "confirmado"].includes(statusPedidos[p.codigo]?.status || "novo")).length;
+  $("pontoPedidos").classList.toggle("oculto", !andamento);
+}
+// pergunta pra loja a situação dos pedidos deste celular (só devolve os que têm o código)
+async function atualizarStatusPedidos() {
+  const lista = lerMeusPedidos();
+  if (!lista.length) return;
+  try {
+    const { data, error } = await db.rpc("meus_pedidos", { p_codigos: lista.map(p => p.codigo) });
+    if (error) throw error;
+    statusPedidos = Object.fromEntries((data || []).map(r => [r.codigo, r]));
+  } catch (e) { console.warn("Não deu pra atualizar os pedidos:", e.message || e); }
+  atualizarBotaoPedidos();
+  if (painelAberto() && passo === "pedidos") montarMeusPedidos();
+}
+function abrirMeusPedidos() {
+  abrirPainel("pedidos");
+  atualizarStatusPedidos();
+  clearInterval(timerPedidos);
+  timerPedidos = setInterval(() => {
+    if (painelAberto() && passo === "pedidos") atualizarStatusPedidos(); else clearInterval(timerPedidos);
+  }, 20000);
+}
+function linhaDoTempo(st) {
+  if (st === "cancelado") return `<div class="linha-tempo cancelado">Este pedido foi cancelado pela loja.</div>`;
+  const etapas = [["novo", "Recebido"], ["confirmado", "Confirmado"], ["entregue", "Entregue"]];
+  const atual = etapas.findIndex(([k]) => k === st);
+  return `<div class="linha-tempo">${etapas.map(([, t], i) => `<span class="${i <= atual ? "feito" : ""}">${t}</span>`).join("")}</div>`;
+}
+function montarMeusPedidos() {
+  const lista = lerMeusPedidos();
+  $("viewPedidos").innerHTML = lista.length ? lista.map(p => {
+    const b = statusPedidos[p.codigo];
+    const st = b?.status || "novo";
+    const [classe, texto] = ROTULO_STATUS[st] || ["st-recebido", st];
+    const itens = b?.itens || p.itens || [];
+    const quando = new Date(b?.criado_em || p.criadoEm).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+    const dataEnt = String(b?.entrega_data || p.entrega?.data || "").split("-").reverse().join("/");
+    const hor = b?.entrega_horario || p.entrega?.horario || "";
+    return `<div class="meu-pedido">
+      <div class="cab"><b>Pedido ${escaparHtml(p.numero)}</b><span class="status-cli ${classe}">${texto}</span></div>
+      <div class="sub">Feito em ${quando}${dataEnt ? ` · entrega ${dataEnt}${hor ? ", " + escaparHtml(hor) : ""}` : ""}</div>
+      ${linhaDoTempo(st)}
+      <ul>${itens.map(i => `<li>${Number(i.qtd)}x ${escaparHtml(i.nome)}${i.detalhe ? ` (${escaparHtml(i.detalhe)})` : ""}</li>`).join("")}</ul>
+      <div class="rodape-pedido"><span>Total <b>${real(Number(b?.total ?? p.total))}</b></span>
+        <button class="btn-secundario" data-repetir="${escaparHtml(p.codigo)}">🔁 Pedir de novo</button></div>
+    </div>`;
+  }).join("") : `<div class="vazio">Você ainda não fez pedidos neste celular.</div>`;
+}
+// coloca os mesmos itens no carrinho (preço e estoque de hoje)
+function pedirDeNovo(codigo) {
+  const p = lerMeusPedidos().find(x => x.codigo === codigo);
+  const itens = statusPedidos[codigo]?.itens || p?.itens || [];
+  let colocados = 0;
+  const faltaram = [];
+  for (const i of itens) {
+    const prod = produtoPorId(i.id);
+    if (!prod || limiteDe(prod) <= 0) { faltaram.push(i.nome); continue; }
+    carrinho[prod.id] = Math.max(carrinho[prod.id] || 0, Math.min(Number(i.qtd) || 1, limiteDe(prod)));
+    colocados++;
+  }
+  gravarCarrinho();
+  atualizarTudo();
+  if (!colocados) { avisar("Esses produtos não estão disponíveis agora"); return; }
+  passo = "itens"; montarPainel();
+  avisar(faltaram.length ? `Indisponível agora: ${faltaram.join(", ")}` : "Itens colocados no carrinho");
 }
 
 // ---------------- avisos ----------------
@@ -506,6 +603,8 @@ document.addEventListener("click", ev => {
   else if (chip) { categoriaAtiva = chip.dataset.cat; montarChips(); montarGrade(); }
   else if (ev.target.closest("#btnIrEntrega")) { passo = "entrega"; montarPainel(); $("viewEntrega").scrollTop = 0; }
   else if (ev.target.closest("#btnContinuar")) fecharPainel();
+  else if (ev.target.closest("#btnAcompanhar")) abrirMeusPedidos();
+  else if (ev.target.closest("[data-repetir]")) pedirDeNovo(ev.target.closest("[data-repetir]").dataset.repetir);
   else if (ev.target.closest("#btnEnviar")) enviarPedido();
 });
 // telefone vai sendo formatado: (54) 99999-9999
@@ -517,6 +616,7 @@ $("fTel").addEventListener("input", ev => {
   ev.target.value = t;
 });
 $("btnCarrinhoTopo").onclick = () => abrirPainel("itens");
+$("btnMeusPedidos").onclick = () => abrirMeusPedidos();
 $("btnBarra").onclick = () => abrirPainel("itens");
 $("btnFechar").onclick = fecharPainel;
 $("fundo").onclick = fecharPainel;
@@ -565,5 +665,7 @@ async function carregarDoBanco() {
 }
 montarTudo();
 carregarDoBanco();
+atualizarBotaoPedidos();
+atualizarStatusPedidos();
 // voltou pro app depois de um tempo? busca preços/banners atualizados
 document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") carregarDoBanco(); });

@@ -12,12 +12,15 @@
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="Agro Pet">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
-  <link rel="stylesheet" href="estilo.css?v=20261125i">
+  <link rel="stylesheet" href="estilo.css?v=20261125k">
 </head>
 <body>
   <div class="topo">
     <div class="marca"><span id="logoLoja">🐾</span><span id="nomeLoja">Agro Pet</span></div>
     <button class="btn-instalar oculto" id="btnInstalar">📲 Instalar</button>
+    <button class="btn-carrinho-topo oculto" id="btnMeusPedidos" aria-label="Meus pedidos">
+      📋<span class="txt"> Meus pedidos</span> <span class="ponto-pedidos oculto" id="pontoPedidos"></span>
+    </button>
     <button class="btn-carrinho-topo" id="btnCarrinhoTopo" aria-label="Abrir carrinho">
       🛒 Carrinho <span class="bolinha oculto" id="bolinha">0</span>
     </button>
@@ -104,14 +107,17 @@
     <!-- passo 3: confirmado -->
     <div class="corpo oculto" id="viewOk"></div>
 
+    <!-- meus pedidos (guardados neste celular) -->
+    <div class="corpo oculto" id="viewPedidos"></div>
+
     <footer id="rodapePainel"></footer>
   </aside>
 
   <div class="aviso" id="aviso"></div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/dist/umd/supabase.min.js"></script>
-  <script src="dados.js?v=20261125i"></script>
-  <script src="loja.js?v=20261125i"></script>
-  <script src="pwa.js?v=20261125i"></script>
+  <script src="dados.js?v=20261125k"></script>
+  <script src="loja.js?v=20261125k"></script>
+  <script src="pwa.js?v=20261125k"></script>
 </body>
 </html>
