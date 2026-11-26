@@ -164,7 +164,20 @@ img { max-width: 100%; display: block; }
 /* meus pedidos (cliente) */
 #btnMeusPedidos { position: relative; margin-right: 6px; }
 .ponto-pedidos { position: absolute; top: 4px; right: 4px; width: 9px; height: 9px; border-radius: 50%; background: var(--laranja); border: 2px solid #fff; }
-@media (max-width: 480px) { #btnMeusPedidos .txt { display: none; } }
+@media (max-width: 480px) { #btnMeusPedidos .txt, #btnCompartilhar .txt { display: none; } }
+#btnCompartilhar { margin-right: 6px; }
+/* compartilhar */
+.btn-compartilhar-prod { position: absolute; top: 8px; right: 8px; width: 34px; height: 34px; border-radius: 50%; border: 0; background: rgba(255,255,255,.92); box-shadow: 0 1px 4px rgba(0,0,0,.18); font-size: 15px; display: grid; place-items: center; cursor: pointer; z-index: 2; }
+.produto.destaque { outline: 3px solid var(--laranja); outline-offset: 2px; animation: destaque 0.8s ease-in-out 3; }
+@keyframes destaque { 50% { transform: scale(1.03); } }
+@media (prefers-reduced-motion: reduce) { .produto.destaque { animation: none; } }
+.folha-fundo { position: fixed; inset: 0; z-index: 60; background: rgba(0,0,0,.4); display: flex; align-items: flex-end; justify-content: center; }
+.folha { background: #fff; width: min(480px, 100%); border-radius: 18px 18px 0 0; padding: 16px 16px calc(16px + env(safe-area-inset-bottom)); }
+@media (min-width: 700px) { .folha-fundo { align-items: center; } .folha { border-radius: 18px; } }
+.folha-cab { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; font-size: 17px; }
+.folha input { width: 100%; border: 1px solid var(--borda); border-radius: 10px; padding: 10px; font-size: 14px; background: #f7f7f5; margin-bottom: 10px; }
+.botoes-folha { display: flex; gap: 8px; }
+.botoes-folha > * { flex: 1; text-align: center; text-decoration: none; }
 .meu-pedido { background: #fff; border: 1px solid var(--borda); border-radius: 12px; padding: 12px; margin-bottom: 10px; display: flex; flex-direction: column; gap: 6px; }
 .meu-pedido .cab { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 .meu-pedido .sub { font-size: 13px; color: var(--texto-suave); }

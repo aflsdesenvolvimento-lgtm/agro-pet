@@ -167,7 +167,8 @@ function montarGrade() {
       : `<button class="btn-add" data-mais="${p.id}">Adicionar</button>`;
     const restam = !esgotado && limite <= 5 ? `<div class="restam">Só ${limite === 1 ? "resta 1" : `restam ${limite}`}</div>` : "";
     return `
-      <article class="produto ${esgotado ? "esgotado" : ""}">
+      <article class="produto ${esgotado ? "esgotado" : ""}" data-produto="${p.id}">
+        <button class="btn-compartilhar-prod" data-compartilhar="${p.id}" aria-label="Compartilhar ${escaparHtml(p.nome)}" title="Compartilhar">📤</button>
         ${promo ? `<span class="selo">-${descontoPct(p)}%</span>` : ""}
         <div class="foto">${foto}</div>
         <div class="info">
@@ -566,6 +567,40 @@ function pedirDeNovo(codigo) {
   avisar(faltaram.length ? `Indisponível agora: ${faltaram.join(", ")}` : "Itens colocados no carrinho");
 }
 
+// ---------------- compartilhar a loja ou um produto ----------------
+async function abrirCompartilhar(titulo, texto, url) {
+  if (await compartilharNativo(titulo, texto, url)) return;
+  $("tituloCompartilhar").textContent = titulo;
+  $("folhaTexto").textContent = texto;
+  $("folhaLink").value = url;
+  $("folhaWhats").href = linkWhatsApp(texto + " " + url);
+  $("folhaCompartilhar").classList.remove("oculto");
+}
+function fecharFolha() { $("folhaCompartilhar").classList.add("oculto"); }
+function compartilharLoja() {
+  const nome = loja.config.nome || "nossa loja";
+  abrirCompartilhar(`Compartilhar ${nome}`, `Peça ração, petiscos e acessórios na ${nome} pelo app, com entrega em casa:`, linkDaLoja(SLUG));
+}
+function compartilharProduto(id) {
+  const p = produtoPorId(id);
+  if (!p) return;
+  abrirCompartilhar(`Compartilhar produto`, `Olha esse produto na ${loja.config.nome}: ${p.nome}${p.detalhe ? " " + p.detalhe : ""} por ${real(p.preco)}`, linkDaLoja(SLUG, p.id));
+}
+// abriu por link de um produto: rola até ele e destaca
+let produtoDoLink = new URLSearchParams(location.search).get("p");
+function mostrarProdutoDoLink() {
+  if (!produtoDoLink || estadoCarga !== "ok") return;
+  const id = produtoDoLink;
+  produtoDoLink = null;
+  if (!produtoPorId(id)) { avisar("Esse produto não está mais disponível"); return; }
+  if (categoriaAtiva !== "Todos" || termoBusca) { categoriaAtiva = "Todos"; termoBusca = ""; $("busca").value = ""; montarChips(); montarGrade(); }
+  const el = document.querySelector(`[data-produto="${CSS.escape(id)}"]`);
+  if (!el) return;
+  el.scrollIntoView({ behavior: "smooth", block: "center" });
+  el.classList.add("destaque");
+  setTimeout(() => el.classList.remove("destaque"), 2600);
+}
+
 // ---------------- avisos ----------------
 let timerAviso;
 function avisar(texto) {
@@ -584,6 +619,8 @@ function atualizarTudo() {
 
 // ---------------- eventos ----------------
 document.addEventListener("click", ev => {
+  const comp = ev.target.closest("[data-compartilhar]");
+  if (comp) { compartilharProduto(comp.dataset.compartilhar); return; }
   const mais = ev.target.closest("[data-mais]");
   const menos = ev.target.closest("[data-menos]");
   const chip = ev.target.closest("[data-cat]");
@@ -617,11 +654,19 @@ $("fTel").addEventListener("input", ev => {
 });
 $("btnCarrinhoTopo").onclick = () => abrirPainel("itens");
 $("btnMeusPedidos").onclick = () => abrirMeusPedidos();
+$("btnCompartilhar").onclick = compartilharLoja;
+$("btnFecharFolha").onclick = fecharFolha;
+$("folhaCompartilhar").onclick = ev => { if (ev.target === $("folhaCompartilhar")) fecharFolha(); };
+$("folhaCopiar").onclick = async () => avisar(await copiarTexto($("folhaLink").value) ? "Link copiado! É só colar onde quiser" : "Não deu pra copiar: segure no link e copie");
 $("btnBarra").onclick = () => abrirPainel("itens");
 $("btnFechar").onclick = fecharPainel;
 $("fundo").onclick = fecharPainel;
 $("btnVoltar").onclick = () => { passo = "itens"; montarPainel(); };
-document.addEventListener("keydown", ev => { if (ev.key === "Escape" && painelAberto()) fecharPainel(); });
+document.addEventListener("keydown", ev => {
+  if (ev.key !== "Escape") return;
+  if (!$("folhaCompartilhar").classList.contains("oculto")) fecharFolha();
+  else if (painelAberto()) fecharPainel();
+});
 $("busca").addEventListener("input", ev => { termoBusca = ev.target.value; montarGrade(); });
 $("fCep").addEventListener("input", buscarCep);
 $("fData").addEventListener("change", montarHorarios);
@@ -662,6 +707,7 @@ async function carregarDoBanco() {
     if (estadoCarga !== "ok") estadoCarga = "erro"; // sem internet e sem cópia guardada
   }
   montarTudo();
+  mostrarProdutoDoLink();
 }
 montarTudo();
 carregarDoBanco();

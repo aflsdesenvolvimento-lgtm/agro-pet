@@ -12,7 +12,7 @@
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="Painel Agro Pet">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
-  <link rel="stylesheet" href="estilo.css?v=20261125o">
+  <link rel="stylesheet" href="estilo.css?v=20261126a">
   <style>
     body { padding-bottom: 40px; }
     .topo a { color: #fff; text-decoration: none; background: rgba(255,255,255,.15); border-radius: 999px; padding: 8px 14px; font-weight: 600; }
@@ -237,6 +237,10 @@
     .regra-frete { border: 1px solid var(--borda); border-radius: 12px; padding: 10px 12px; margin-bottom: 10px; display: flex; flex-direction: column; gap: 8px; }
     .regra-frete .linha { margin: 0; }
     .regra-frete .campo { margin-bottom: 0; }
+    /* divulgar a loja */
+    .qr-loja { display: flex; flex-direction: column; align-items: center; gap: 10px; margin-top: 12px; }
+    .qr-loja canvas { width: 220px; height: auto; border: 1px solid var(--borda); border-radius: 12px; background: #fff; }
+    .qr-loja .btn-principal { width: 100%; max-width: 320px; }
     /* tela de "salvando" */
     .carregando { position: fixed; inset: 0; z-index: 80; background: rgba(247,245,240,.75); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; font-weight: 600; }
     .girando { width: 36px; height: 36px; border-radius: 50%; border: 4px solid var(--verde-claro); border-top-color: var(--verde); animation: gira .8s linear infinite; }
@@ -438,6 +442,19 @@
 
     <!-- ===== capa ===== -->
     <section id="abaCapa" class="oculto">
+      <div class="secao-form" id="cartaoDivulgar">
+        <h3>Divulgar a loja</h3>
+        <p class="ajuda">Mande o link pros clientes ou imprima o QR Code (balcão, sacolas, Instagram). Quem abrir cai direto na loja.</p>
+        <div class="linha-convite" style="margin-top:0"><input id="dvLink" readonly aria-label="Link da loja"><button class="btn-secundario" id="dvCopiar">Copiar</button></div>
+        <div class="botoes" style="margin-top:8px">
+          <a class="btn-secundario" id="dvWhats" target="_blank" rel="noopener" style="text-align:center;text-decoration:none">WhatsApp</a>
+          <button class="btn-secundario" id="dvCompartilhar">Compartilhar</button>
+        </div>
+        <div class="qr-loja">
+          <canvas id="dvQr" aria-label="QR Code da loja"></canvas>
+          <button class="btn-principal" id="dvBaixarQr">⬇ Baixar QR Code</button>
+        </div>
+      </div>
       <div class="secao-form">
         <h3>Banners da capa</h3>
         <p class="ajuda">Os banners passam um depois do outro no topo da loja. Toque em <b>Editar</b> para mudar imagem, textos, cores e a posição das palavras.</p>
@@ -731,8 +748,9 @@
   <div class="aviso" id="aviso"></div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/dist/umd/supabase.min.js"></script>
-  <script src="dados.js?v=20261125o"></script>
-  <script src="admin.js?v=20261125o"></script>
-  <script src="pwa.js?v=20261125o"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
+  <script src="dados.js?v=20261126a"></script>
+  <script src="admin.js?v=20261126a"></script>
+  <script src="pwa.js?v=20261126a"></script>
 </body>
 </html>

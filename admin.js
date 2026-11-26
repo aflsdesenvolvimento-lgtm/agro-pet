@@ -253,6 +253,7 @@ async function abrirLoja(id) {
   if (!$("abaFinanceiro").classList.contains("oculto")) carregarFinanceiro();
   if (!$("abaEstoque").classList.contains("oculto")) montarEstoque();
   contarEstoqueBaixo();
+  if (!$("abaCapa").classList.contains("oculto")) montarDivulgar();
   // master trocou de loja com a Equipe/Mensalidade aberta: recarrega pra loja nova
   if (!$("abaConta").classList.contains("oculto") && (contaAtual === "equipe" || contaAtual === "mensalidade")) abrirConta(contaAtual);
   atualizarPontoConta();
@@ -285,6 +286,7 @@ function trocarAba(nome) {
   if (nome === "pedidos") { carregarPedidos(); montarAvisos(); }
   if (nome === "financeiro") carregarFinanceiro();
   if (nome === "estoque") montarEstoque();
+  if (nome === "capa") montarDivulgar();
   if (nome === "lojas") montarLojas();
 }
 document.querySelectorAll("[data-aba]").forEach(b => b.onclick = () => trocarAba(b.dataset.aba));
@@ -2253,6 +2255,56 @@ $("cRegras").addEventListener("click", ev => {
   regrasFrete.splice(Number(b.dataset.tirarRegra), 1);
   montarRegras();
 });
+
+// ================= divulgar a loja (link + QR Code) =================
+function textoDivulgar() { return `Peça ração, petiscos e acessórios na ${loja.config.nome} pelo app, com entrega em casa:`; }
+function montarDivulgar() {
+  if (!loja) return;
+  const url = linkDaLoja(loja.slug);
+  $("dvLink").value = url;
+  $("dvWhats").href = linkWhatsApp(textoDivulgar() + " " + url);
+  desenharQr($("dvQr"), url, loja.config.nome, loja.config.corPrincipal || "#2f6b3a");
+}
+function desenharQr(canvas, url, nome, cor) {
+  const W = 960, M = 70, H = W + 150;
+  canvas.width = W; canvas.height = H;
+  const c = canvas.getContext("2d");
+  c.fillStyle = "#fff"; c.fillRect(0, 0, W, H);
+  if (typeof qrcode !== "function") {
+    c.fillStyle = "#555"; c.font = "36px Arial"; c.textAlign = "center";
+    c.fillText("QR Code indisponível sem internet", W / 2, H / 2);
+    return false;
+  }
+  const q = qrcode(0, "M"); q.addData(url); q.make();
+  const n = q.getModuleCount(), cel = (W - M * 2) / n;
+  c.fillStyle = "#111";
+  for (let r = 0; r < n; r++) for (let k = 0; k < n; k++)
+    if (q.isDark(r, k)) c.fillRect(Math.floor(M + k * cel), Math.floor(M + r * cel), Math.ceil(cel), Math.ceil(cel));
+  c.textAlign = "center";
+  let tam = 56;
+  c.font = `bold ${tam}px Arial`;
+  while (c.measureText(nome).width > W - 80 && tam > 28) { tam -= 2; c.font = `bold ${tam}px Arial`; }
+  c.fillStyle = cor; c.fillText(nome, W / 2, W + 30);
+  c.fillStyle = "#555"; c.font = "32px Arial"; c.fillText("Aponte a câmera e faça seu pedido", W / 2, W + 95);
+  return true;
+}
+$("dvCopiar").onclick = async () => avisar(await copiarTexto($("dvLink").value) ? "Link copiado! É só colar onde quiser" : "Não deu pra copiar: selecione o link e copie");
+$("dvCompartilhar").onclick = async () => {
+  const url = $("dvLink").value;
+  if (!(await compartilharNativo(loja.config.nome, textoDivulgar(), url))) {
+    avisar(await copiarTexto(textoDivulgar() + " " + url) ? "Este navegador não tem a janela de compartilhar: copiei a mensagem com o link" : "Use o botão Copiar");
+  }
+};
+$("dvBaixarQr").onclick = () => {
+  $("dvQr").toBlob(b => {
+    if (!b) { avisar("Não deu pra gerar o arquivo"); return; }
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(b);
+    a.download = `qrcode-${loja.slug}.png`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  }, "image/png");
+};
 
 // ================= início =================
 let recuperandoSenha = false;

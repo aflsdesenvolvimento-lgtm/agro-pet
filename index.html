@@ -12,12 +12,13 @@
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="Agro Pet">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
-  <link rel="stylesheet" href="estilo.css?v=20261125o">
+  <link rel="stylesheet" href="estilo.css?v=20261126a">
 </head>
 <body>
   <div class="topo">
     <div class="marca"><span id="logoLoja">🐾</span><span id="nomeLoja">Agro Pet</span></div>
     <button class="btn-instalar oculto" id="btnInstalar">📲 Instalar</button>
+    <button class="btn-carrinho-topo" id="btnCompartilhar" aria-label="Compartilhar a loja">📤<span class="txt"> Compartilhar</span></button>
     <button class="btn-carrinho-topo oculto" id="btnMeusPedidos" aria-label="Meus pedidos">
       📋<span class="txt"> Meus pedidos</span> <span class="ponto-pedidos oculto" id="pontoPedidos"></span>
     </button>
@@ -113,11 +114,24 @@
     <footer id="rodapePainel"></footer>
   </aside>
 
+  <!-- compartilhar (quando o aparelho não tem a janela própria de compartilhar) -->
+  <div class="folha-fundo oculto" id="folhaCompartilhar" role="dialog" aria-modal="true" aria-labelledby="tituloCompartilhar">
+    <div class="folha">
+      <div class="folha-cab"><b id="tituloCompartilhar">Compartilhar</b><button class="btn-icone" id="btnFecharFolha" aria-label="Fechar">✕</button></div>
+      <p class="ajuda" id="folhaTexto" style="margin:0 0 8px"></p>
+      <input id="folhaLink" readonly aria-label="Link">
+      <div class="botoes-folha">
+        <a class="btn-principal" id="folhaWhats" target="_blank" rel="noopener">WhatsApp</a>
+        <button class="btn-secundario" id="folhaCopiar">Copiar link</button>
+      </div>
+    </div>
+  </div>
+
   <div class="aviso" id="aviso"></div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/dist/umd/supabase.min.js"></script>
-  <script src="dados.js?v=20261125o"></script>
-  <script src="loja.js?v=20261125o"></script>
-  <script src="pwa.js?v=20261125o"></script>
+  <script src="dados.js?v=20261126a"></script>
+  <script src="loja.js?v=20261126a"></script>
+  <script src="pwa.js?v=20261126a"></script>
 </body>
 </html>

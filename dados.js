@@ -53,6 +53,31 @@ function configParaBanco(config) {
 }
 
 // ---------------- vitrine (tela do cliente) ----------------
+// ---------------- compartilhar ----------------
+function linkDaLoja(slug, produtoId) {
+  const base = location.origin + location.pathname.replace(/[^/]*$/, "") + "index.html?loja=" + encodeURIComponent(slug);
+  return produtoId ? base + "&p=" + encodeURIComponent(produtoId) : base;
+}
+// janela de compartilhar do próprio aparelho (WhatsApp, Instagram...). Sem ela devolve false e a tela mostra outras opções.
+async function compartilharNativo(titulo, texto, url) {
+  if (!navigator.share) return false;
+  try { await navigator.share({ title: titulo, text: texto, url }); return true; }
+  catch (e) { return !!e && e.name === "AbortError"; } // a pessoa fechou: não mostra mais nada
+}
+async function copiarTexto(t) {
+  try { await navigator.clipboard.writeText(t); return true; }
+  catch (e) {
+    const ta = document.createElement("textarea");
+    ta.value = t; ta.style.position = "fixed"; ta.style.opacity = "0";
+    document.body.appendChild(ta); ta.select();
+    let ok = false;
+    try { ok = document.execCommand("copy"); } catch (e2) { /* sem cópia */ }
+    ta.remove();
+    return ok;
+  }
+}
+function linkWhatsApp(texto) { return "https://wa.me/?text=" + encodeURIComponent(texto); }
+
 function slugAtual() {
   const doLink = new URLSearchParams(location.search).get("loja");
   if (doLink) {
