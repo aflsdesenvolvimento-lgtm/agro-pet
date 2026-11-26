@@ -87,7 +87,7 @@ function montarTopo() {
   if (loja.id) { // nome do ícone no celular = o que a loja escolheu; o app instalado abre direto nesta loja
     const nomeApp = nomeDoApp(c);
     aplicarNomeDoApp({ nome: nomeApp, curto: nomeApp, inicio: "index.html?loja=" + encodeURIComponent(loja.slug),
-      id: "?app=loja&loja=" + encodeURIComponent(loja.slug), escopo: "", icones: "loja", cor: c.corPrincipal });
+      id: "?app=loja&loja=" + encodeURIComponent(loja.slug), escopo: "", icones: "loja", cor: c.corPrincipal, icone: c.icone || "" });
   }
   $("nomeLoja").textContent = c.nome;
   $("logoLoja").innerHTML = c.logo ? `<img class="logo" src="${escaparHtml(c.logo)}" alt="">` : "🐾";

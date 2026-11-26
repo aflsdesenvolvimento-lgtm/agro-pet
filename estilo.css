@@ -304,3 +304,5 @@ img { max-width: 100%; display: block; }
   display: flex; flex-direction: column; align-items: center; gap: 4px; }
 .previa-icone img { width: 44px; height: 44px; border-radius: 11px; }
 .previa-icone span { max-width: 68px; font-size: 11px; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.campo .chk { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 400; color: var(--texto); }
+.campo .chk input { width: auto; padding: 0; margin: 0; }

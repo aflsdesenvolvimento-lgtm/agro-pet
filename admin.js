@@ -1359,11 +1359,63 @@ let corAtual = "#2f6b3a";
 function mostrarLogo() {
   $("previaLogo").innerHTML = logoAtual ? `<img src="${escaparHtml(logoAtual)}" alt="">` : "🐾";
   $("btnTirarLogo").classList.toggle("oculto", !logoAtual);
+  mostrarPreviaIcone();
 }
 function mostrarCores() {
   $("cores").innerHTML = coresHtml(corAtual, "loja");
   aplicarTema(corAtual); // o painel já mostra a cor escolhida
+  mostrarPreviaIcone();
 }
+
+// ---------- ícone do app no celular: patinha na cor da loja, ou o logo com fundo branco ----------
+const COR_ICONE_PADRAO = "#2f6b3a"; // a do ícone que já vem pronto (icones/loja-*.png)
+let iconeBase = null;
+function carregarImg(src) {
+  return new Promise((ok, erro) => {
+    const i = new Image();
+    if (!ehDataUrl(src)) i.crossOrigin = "anonymous"; // logo vem do armazenamento: precisa disso pra virar PNG
+    i.onload = () => ok(i); i.onerror = erro; i.src = src;
+  });
+}
+function modoIcone() { return document.querySelector('input[name="cIcone"]:checked')?.value || "patinha"; }
+async function gerarIcone(modo, cor, logo, tam = 512) {
+  const c = document.createElement("canvas");
+  c.width = c.height = tam;
+  const g = c.getContext("2d");
+  if (modo === "logo" && logo) {
+    const img = await carregarImg(logo);
+    g.fillStyle = "#ffffff"; g.fillRect(0, 0, tam, tam);
+    const caixa = tam * 0.56; // folga pros celulares que recortam o ícone em círculo
+    const esc = Math.min(caixa / img.width, caixa / img.height);
+    const w = img.width * esc, h = img.height * esc;
+    g.drawImage(img, (tam - w) / 2, (tam - h) / 2, w, h);
+  } else {
+    iconeBase ||= await carregarImg("icones/loja-512.png");
+    g.drawImage(iconeBase, 0, 0, tam, tam);
+    const d = g.getImageData(0, 0, tam, tam), px = d.data;
+    const fundo = [1, 3, 5].map(i => parseInt(cor.slice(i, i + 2), 16));
+    const lum = (0.299 * fundo[0] + 0.587 * fundo[1] + 0.114 * fundo[2]) / 255;
+    const pata = lum > 0.72 ? [33, 33, 33] : [255, 255, 255]; // cor clara demais: patinha escura pra aparecer
+    for (let i = 0; i < px.length; i += 4) {
+      const t = Math.min(1, Math.max(0, (px[i + 1] - 107) / 148)); // 0 = fundo verde, 1 = patinha branca
+      for (let k = 0; k < 3; k++) px[i + k] = fundo[k] + (pata[k] - fundo[k]) * t;
+    }
+    g.putImageData(d, 0, 0);
+  }
+  return c.toDataURL("image/png");
+}
+let previaIconeSeq = 0;
+async function mostrarPreviaIcone() {
+  if (!$("cIconeLogo")) return;
+  $("cIconeLogo").disabled = !logoAtual;
+  if (!logoAtual && modoIcone() === "logo") document.querySelector('input[name="cIcone"][value="patinha"]').checked = true;
+  const seq = ++previaIconeSeq;
+  try {
+    const url = await gerarIcone(modoIcone(), /^#[0-9a-f]{6}$/i.test(corAtual) ? corAtual : COR_ICONE_PADRAO, logoAtual, 132);
+    if (seq === previaIconeSeq) $("pvIcone").src = url;
+  } catch (e) { console.warn("Prévia do ícone:", e); }
+}
+document.querySelectorAll('input[name="cIcone"]').forEach(r => r.addEventListener("change", mostrarPreviaIcone));
 $("cores").addEventListener("click", ev => {
   const b = ev.target.closest("[data-cor-loja]");
   if (b) { corAtual = b.dataset.corLoja; mostrarCores(); }
@@ -1393,7 +1445,21 @@ $("btnSalvarCapa").onclick = async () => {
     logoAtual = logo;
   }
   const logoVelho = loja.config.logo;
+  const iconeVelho = loja.config.icone || "";
+  const modo = logo ? modoIcone() : "patinha";
+  const cor = /^#[0-9a-f]{6}$/i.test(corAtual) ? corAtual.toLowerCase() : COR_ICONE_PADRAO;
+  let chave = modo === "logo" ? "logo|" + logo : cor === COR_ICONE_PADRAO ? "" : "patinha|" + cor;
+  let icone = iconeVelho;
+  if (chave !== (loja.config.iconeChave || "")) {
+    if (!chave) icone = ""; // patinha verde: usa o ícone que já vem pronto
+    else {
+      const novo = await ocupado("Montando o ícone do app...", async () => enviarImagem(loja.id, await gerarIcone(modo, cor, logo)));
+      if (novo) icone = novo;
+      else { chave = loja.config.iconeChave || ""; avisar("Não consegui montar o ícone; o resto vai ser salvo"); }
+    }
+  }
   Object.assign(loja.config, {
+    iconeModo: modo, icone, iconeChave: chave,
     nome: $("cNome").value.trim() || loja.config.nome,
     nomeApp: $("cNomeApp").value.trim(),
     logo,
@@ -1403,6 +1469,7 @@ $("btnSalvarCapa").onclick = async () => {
   });
   if (await salvarConfig("Identidade e vitrine salvas")) {
     if (logoVelho && logoVelho !== logo) apagarImagem(logoVelho);
+    if (iconeVelho && iconeVelho !== icone) apagarImagem(iconeVelho);
     montarListaBanners();
   }
 };
@@ -1413,6 +1480,9 @@ function montarConfig() {
   $("cNome").value = c.nome;
   $("cNomeApp").value = c.nomeApp || "";
   mostrarPreviaNomeApp();
+  const r = document.querySelector(`input[name="cIcone"][value="${c.iconeModo === "logo" && c.logo ? "logo" : "patinha"}"]`);
+  if (r) r.checked = true;
+  mostrarPreviaIcone();
   $("cPromo").checked = c.mostrarPromocoes !== false;
   $("cBusca").value = c.textoBusca || "";
   $("cAltura").value = c.alturaBanner || "media";

@@ -62,8 +62,14 @@ function aplicarNomeDoApp(opc) {
   const base = location.origin + location.pathname.replace(/[^/]*$/, "");
   document.querySelectorAll('meta[name="apple-mobile-web-app-title"], meta[name="application-name"]')
     .forEach(m => m.setAttribute("content", opc.curto)); // iPhone usa esse
-  const icones = [192, 512].flatMap(t => ["any", "maskable"].map(purpose =>
-    ({ src: `${base}icones/${opc.icones}-${t}.png`, sizes: `${t}x${t}`, type: "image/png", purpose })));
+  const icones = opc.icone // ícone montado no painel (cor/logo da loja)
+    ? ["any", "maskable"].map(purpose => ({ src: opc.icone, sizes: "512x512", type: "image/png", purpose }))
+    : [192, 512].flatMap(t => ["any", "maskable"].map(purpose =>
+      ({ src: `${base}icones/${opc.icones}-${t}.png`, sizes: `${t}x${t}`, type: "image/png", purpose })));
+  if (opc.icones === "loja") { // iPhone pega o ícone daqui na hora de instalar
+    document.querySelector('link[rel="apple-touch-icon"]')?.setAttribute("href", opc.icone || "icones/loja-apple.png");
+    document.querySelector('link[rel="icon"]')?.setAttribute("href", opc.icone || "icones/loja-192.png");
+  }
   const m = {
     id: base + opc.id, name: opc.nome, short_name: opc.curto, lang: "pt-BR",
     start_url: base + opc.inicio, scope: base + opc.escopo, display: "standalone", orientation: "portrait",
