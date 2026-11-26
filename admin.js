@@ -713,10 +713,21 @@ function montarFinanceiro() {
     prods[k] = prods[k] || { qtd: 0, valor: 0 };
     prods[k].qtd += Number(i.qtd || 0); prods[k].valor += Number(i.preco || 0) * Number(i.qtd || 0);
   }));
-  const pl = Object.entries(prods).sort((a, b) => b[1].valor - a[1].valor).slice(0, 10);
-  $("finProdutos").innerHTML = pl.length ? `<thead><tr><th>Produto</th><th class="num">Qtd</th><th class="num">Valor</th></tr></thead>
-    <tbody>${pl.map(([n, v]) => `<tr><td>${escaparHtml(n)}</td><td class="num">${v.qtd}</td><td class="num">${real(v.valor)}</td></tr>`).join("")}</tbody>`
+  // ranking pela quantidade (empate: pelo valor)
+  const cabProd = `<thead><tr><th>Produto</th><th class="num">Qtd</th><th class="num">Valor</th></tr></thead>`;
+  const linhasProd = l => `<tbody>${l.map(([n, v]) => `<tr><td>${escaparHtml(n)}</td><td class="num">${v.qtd}</td><td class="num">${real(v.valor)}</td></tr>`).join("")}</tbody>`;
+  const vendidos = Object.entries(prods).sort((a, b) => b[1].qtd - a[1].qtd || b[1].valor - a[1].valor);
+  const mais = vendidos.slice(0, 5);
+  // menos vendidos: o que sobrou fora do top 5; olhando uma loja só, entram também os produtos que não venderam nada
+  const zerados = todas ? [] : loja.produtos.filter(p => p.ativo)
+    .map(p => `${p.nome}${p.detalhe ? ` (${p.detalhe})` : ""}`)
+    .filter((k, i, a) => !prods[k] && a.indexOf(k) === i).map(k => [k, { qtd: 0, valor: 0 }]);
+  const menos = [...vendidos.slice(5), ...zerados]
+    .sort((a, b) => a[1].qtd - b[1].qtd || a[1].valor - b[1].valor || a[0].localeCompare(b[0], "pt-BR")).slice(0, 5);
+  $("finProdutos").innerHTML = mais.length ? cabProd + linhasProd(mais)
     : `<tbody><tr><td>Nenhum produto entregue no período.</td></tr></tbody>`;
+  $("finProdutosMenos").innerHTML = menos.length ? cabProd + linhasProd(menos)
+    : `<tbody><tr><td>${mais.length ? "Todos os produtos vendidos já estão entre os 5 mais." : "Nenhum produto entregue no período."}</td></tr></tbody>`;
 
   montarEstoqueVendas(r);
   montarFrete(r);
