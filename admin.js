@@ -224,7 +224,19 @@ function montarSeletor() {
     `<option value="${l.id}">${escaparHtml(l.config.nome)}${l.ativa ? "" : " (suspensa)"}</option>`).join("");
   if (loja) $("seletorLoja").value = loja.id;
   $("nomeLojaFixo").textContent = loja?.config.nome || lojas[0]?.config.nome || "";
+  nomeDoPainel();
 }
+// nome do ícone do painel no celular: "Painel <nome do app da loja>" pra quem cuida de uma loja só
+function nomeDoPainel() {
+  const unica = !ehMaster() && lojas.length === 1 ? lojas[0] : null;
+  const nome = unica ? "Painel " + nomeDoApp(unica.config) : "";
+  try { if (nome) localStorage.setItem("agropet_nome_painel", nome); else localStorage.removeItem("agropet_nome_painel"); } catch (e) {}
+  if (nome) aplicarNomeDoPainel(nome);
+}
+function aplicarNomeDoPainel(nome) {
+  aplicarNomeDoApp({ nome, curto: nome, inicio: "admin.html", id: "admin.html?app=painel", escopo: "admin", icones: "painel", cor: "#e0742b" });
+}
+try { const n = localStorage.getItem("agropet_nome_painel"); if (n) aplicarNomeDoPainel(n); } catch (e) {} // já na abertura, antes do login
 $("seletorLoja").onchange = ev => abrirLoja(ev.target.value);
 
 async function abrirLoja(id) {
@@ -1367,6 +1379,11 @@ $("arqLogo").onchange = async ev => {
   ev.target.value = "";
 };
 $("btnTirarLogo").onclick = () => { logoAtual = ""; mostrarLogo(); };
+function mostrarPreviaNomeApp() {
+  $("pvNomeApp").textContent = $("cNomeApp").value.trim() || $("cNome").value.trim() || "Loja";
+}
+$("cNomeApp").oninput = mostrarPreviaNomeApp;
+$("cNome").addEventListener("input", mostrarPreviaNomeApp);
 
 $("btnSalvarCapa").onclick = async () => {
   let logo = logoAtual;
@@ -1378,6 +1395,7 @@ $("btnSalvarCapa").onclick = async () => {
   const logoVelho = loja.config.logo;
   Object.assign(loja.config, {
     nome: $("cNome").value.trim() || loja.config.nome,
+    nomeApp: $("cNomeApp").value.trim(),
     logo,
     corPrincipal: corAtual,
     mostrarPromocoes: $("cPromo").checked,
@@ -1393,6 +1411,8 @@ $("btnSalvarCapa").onclick = async () => {
 function montarConfig() {
   const c = loja.config;
   $("cNome").value = c.nome;
+  $("cNomeApp").value = c.nomeApp || "";
+  mostrarPreviaNomeApp();
   $("cPromo").checked = c.mostrarPromocoes !== false;
   $("cBusca").value = c.textoBusca || "";
   $("cAltura").value = c.alturaBanner || "media";

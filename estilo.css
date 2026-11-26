@@ -296,3 +296,11 @@ img { max-width: 100%; display: block; }
   .filtros { flex-direction: row; align-items: center; }
   .busca { max-width: 340px; }
 }
+
+/* nome do app no celular (Identidade) */
+.linha-nome-app { display: flex; gap: 12px; align-items: center; }
+.linha-nome-app input { flex: 1; min-width: 0; }
+.previa-icone { flex: none; width: 76px; padding: 8px 4px; border-radius: 12px; background: #1d2f5c;
+  display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.previa-icone img { width: 44px; height: 44px; border-radius: 11px; }
+.previa-icone span { max-width: 68px; font-size: 11px; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

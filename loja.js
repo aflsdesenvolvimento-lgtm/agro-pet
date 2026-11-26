@@ -84,6 +84,11 @@ function montarTopo() {
   const c = loja.config;
   aplicarTema(c.corPrincipal);
   document.title = c.nome ? `${c.nome} - Pedidos` : "Carregando...";
+  if (loja.id) { // nome do ícone no celular = o que a loja escolheu; o app instalado abre direto nesta loja
+    const nomeApp = nomeDoApp(c);
+    aplicarNomeDoApp({ nome: nomeApp, curto: nomeApp, inicio: "index.html?loja=" + encodeURIComponent(loja.slug),
+      id: "?app=loja&loja=" + encodeURIComponent(loja.slug), escopo: "", icones: "loja", cor: c.corPrincipal });
+  }
   $("nomeLoja").textContent = c.nome;
   $("logoLoja").innerHTML = c.logo ? `<img class="logo" src="${escaparHtml(c.logo)}" alt="">` : "🐾";
   $("busca").placeholder = c.textoBusca || "Buscar produto";

@@ -52,6 +52,30 @@ function configParaBanco(config) {
   return resto;
 }
 
+// ---------------- nome do app no celular (embaixo do ícone da tela inicial) ----------------
+function nomeDoApp(config) { return String(config.nomeApp || config.nome || "").trim(); }
+let ultimoManifesto = "";
+// troca o nome (e o endereço de abertura) que o celular usa ao instalar o app.
+// opc: { nome, curto, inicio, id, escopo, icones: "loja" | "painel", cor }
+function aplicarNomeDoApp(opc) {
+  if (!opc.curto) return;
+  const base = location.origin + location.pathname.replace(/[^/]*$/, "");
+  document.querySelectorAll('meta[name="apple-mobile-web-app-title"], meta[name="application-name"]')
+    .forEach(m => m.setAttribute("content", opc.curto)); // iPhone usa esse
+  const icones = [192, 512].flatMap(t => ["any", "maskable"].map(purpose =>
+    ({ src: `${base}icones/${opc.icones}-${t}.png`, sizes: `${t}x${t}`, type: "image/png", purpose })));
+  const m = {
+    id: base + opc.id, name: opc.nome, short_name: opc.curto, lang: "pt-BR",
+    start_url: base + opc.inicio, scope: base + opc.escopo, display: "standalone", orientation: "portrait",
+    background_color: "#f7f5f0", theme_color: opc.cor || "#2f6b3a", icons: icones,
+  };
+  const json = JSON.stringify(m);
+  const link = document.querySelector('link[rel="manifest"]');
+  if (!link || json === ultimoManifesto) return;
+  ultimoManifesto = json;
+  link.href = URL.createObjectURL(new Blob([json], { type: "application/manifest+json" })); // Android/Chrome usa esse
+}
+
 // ---------------- vitrine (tela do cliente) ----------------
 // ---------------- compartilhar ----------------
 function linkDaLoja(slug, produtoId) {
