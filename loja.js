@@ -688,6 +688,7 @@ $("viewEntrega").addEventListener("input", ev => {
 });
 // ---------------- início ----------------
 function montarTudo() {
+  document.querySelectorAll(".link-privacidade").forEach(a => { a.href = "privacidade.html?loja=" + encodeURIComponent(SLUG); });
   montarTopo();
   montarChips();
   atualizarTudo();

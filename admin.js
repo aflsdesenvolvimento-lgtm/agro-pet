@@ -478,6 +478,32 @@ async function carregarPedidos(silencioso = false) {
   else await ocupado("Buscando pedidos...", buscar);
   montarPedidos();
 }
+// ---------- LGPD: apagar os dados de um cliente (fica o pedido, sai nome/telefone/endereço) ----------
+$("lgpdBuscar").onclick = async () => {
+  const tel = $("lgpdTel").value.trim();
+  if (tel.replace(/\D/g, "").length < 10) { avisar("Digite o telefone com DDD"); return; }
+  const r = await ocupado("Procurando...", async () => checar(await db.rpc("apagar_dados_cliente", { p_loja: loja.id, p_telefone: tel, p_apagar: false }))[0]);
+  if (!r) return;
+  $("lgpdResultado").innerHTML = !r.pedidos
+    ? `<p class="ajuda" style="margin:10px 0 0">Nenhum pedido com esse telefone em ${escaparHtml(loja.config.nome)}.</p>`
+    : `<div class="lgpd-achado">
+        <p style="margin:0 0 8px"><b>${r.pedidos} ${r.pedidos === 1 ? "pedido" : "pedidos"}</b> de ${escaparHtml(r.nomes || "cliente sem nome")}, o último em ${new Date(r.ultimo).toLocaleDateString("pt-BR")}.</p>
+        <button class="btn-perigo" id="lgpdApagar" data-tel="${escaparHtml(tel)}">Apagar nome, telefone e endereço</button>
+      </div>`;
+};
+$("lgpdTel").addEventListener("keydown", ev => { if (ev.key === "Enter") { ev.preventDefault(); $("lgpdBuscar").click(); } });
+$("lgpdResultado").addEventListener("click", async ev => {
+  const b = ev.target.closest("#lgpdApagar");
+  if (!b) return;
+  if (!confirm("Apagar de vez o nome, o telefone e o endereço desse cliente em todos os pedidos dele nesta loja? Não dá para desfazer.")) return;
+  const r = await ocupado("Apagando...", async () => checar(await db.rpc("apagar_dados_cliente", { p_loja: loja.id, p_telefone: b.dataset.tel, p_apagar: true }))[0]);
+  if (!r) return;
+  $("lgpdResultado").innerHTML = `<p class="ajuda" style="margin:10px 0 0">✔ Dados apagados em ${r.pedidos} ${r.pedidos === 1 ? "pedido" : "pedidos"}. Pode avisar o cliente que o pedido dele foi atendido.</p>`;
+  $("lgpdTel").value = "";
+  avisar("Dados do cliente apagados");
+  if (typeof carregarPedidos === "function") carregarPedidos();
+});
+
 function montarPedidos() {
   const novos = pedidos.filter(p => p.status === "novo").length;
   $("contPedidos").textContent = novos;
@@ -497,7 +523,7 @@ function montarPedidos() {
         <div class="cab"><b>${escaparHtml(c.nome || "Cliente")}</b><span class="status ${p.status}">${STATUS[p.status]}</span></div>
         <div class="det">Pedido ${escaparHtml(p.numero)} · feito ${quando}${tel ? ` · <a href="https://wa.me/55${tel.replace(/^55/, "")}" target="_blank" rel="noopener">WhatsApp ${escaparHtml(c.telefone)}</a>` : ""}</div>
         <ul class="itens">${(p.itens || []).map(i => `<li>${i.qtd}x ${escaparHtml(i.nome)} ${i.detalhe ? `(${escaparHtml(i.detalhe)})` : ""} — ${real(i.preco * i.qtd)}</li>`).join("")}</ul>
-        <div class="det">🚚 <b>${dataEntrega}</b>, ${escaparHtml(e.horario || "")} · ${escaparHtml(e.rua || "")}, ${escaparHtml(e.numero || "")}${e.complemento ? " - " + escaparHtml(e.complemento) : ""} - ${escaparHtml(e.bairro || "")}, ${escaparHtml(e.cidade || "")}/${escaparHtml(e.uf || "")}</div>
+        <div class="det">🚚 <b>${dataEntrega}</b>, ${escaparHtml(e.horario || "")} · ${c.apagado_em ? "endereço apagado a pedido do cliente (LGPD)" : `${escaparHtml(e.rua || "")}, ${escaparHtml(e.numero || "")}${e.complemento ? " - " + escaparHtml(e.complemento) : ""} - ${escaparHtml(e.bairro || "")}, ${escaparHtml(e.cidade || "")}/${escaparHtml(e.uf || "")}`}</div>
         ${e.referencia ? `<div class="det">📍 ${escaparHtml(e.referencia)}</div>` : ""}
         <div class="det">💳 ${escaparHtml(p.pagamento)}${p.troco ? ` (troco para ${escaparHtml(p.troco)})` : ""}${p.obs ? ` · 📝 ${escaparHtml(p.obs)}` : ""}</div>
         <div class="rodape">
@@ -1468,6 +1494,7 @@ $("btnSalvarCapa").onclick = async () => {
     iconeModo: modo, icone, iconeChave: chave,
     nome: $("cNome").value.trim() || loja.config.nome,
     nomeApp: $("cNomeApp").value.trim(),
+    emailContato: $("cEmailContato").value.trim(),
     logo,
     corPrincipal: corAtual,
     mostrarPromocoes: $("cPromo").checked,
@@ -1485,6 +1512,7 @@ function montarConfig() {
   const c = loja.config;
   $("cNome").value = c.nome;
   $("cNomeApp").value = c.nomeApp || "";
+  $("cEmailContato").value = c.emailContato || "";
   mostrarPreviaNomeApp();
   const r = document.querySelector(`input[name="cIcone"][value="${c.iconeModo === "logo" && c.logo ? "logo" : "patinha"}"]`);
   if (r) r.checked = true;
