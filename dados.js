@@ -76,9 +76,11 @@ function aplicarNomeDoApp(opc) {
     background_color: "#f7f5f0", theme_color: opc.cor || "#2f6b3a", icons: icones,
   };
   const json = JSON.stringify(m);
-  const link = document.querySelector('link[rel="manifest"]');
-  if (!link || json === ultimoManifesto) return;
+  if (json === ultimoManifesto) return;
   ultimoManifesto = json;
+  // o arquivo de instalação é criado só aqui, já com o nome da loja (o iPhone pega o 1º que vê e ignora troca depois)
+  let link = document.querySelector('link[rel="manifest"]');
+  if (!link) { link = document.createElement("link"); link.rel = "manifest"; document.head.appendChild(link); }
   link.href = URL.createObjectURL(new Blob([json], { type: "application/manifest+json" })); // Android/Chrome usa esse
 }
 

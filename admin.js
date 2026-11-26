@@ -236,7 +236,13 @@ function nomeDoPainel() {
 function aplicarNomeDoPainel(nome) {
   aplicarNomeDoApp({ nome, curto: nome, inicio: "admin.html", id: "admin.html?app=painel", escopo: "admin", icones: "painel", cor: "#e0742b" });
 }
-try { const n = localStorage.getItem("agropet_nome_painel"); if (n) aplicarNomeDoPainel(n); } catch (e) {} // já na abertura, antes do login
+// já na abertura, antes do login: nome guardado da última vez, ou o padrão do painel
+(function () {
+  let n = null;
+  try { n = localStorage.getItem("agropet_nome_painel"); } catch (e) {}
+  if (n) aplicarNomeDoPainel(n);
+  else { const l = document.createElement("link"); l.rel = "manifest"; l.href = "manifest-painel.json"; document.head.appendChild(l); }
+})();
 $("seletorLoja").onchange = ev => abrirLoja(ev.target.value);
 
 async function abrirLoja(id) {
