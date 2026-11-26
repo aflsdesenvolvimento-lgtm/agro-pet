@@ -134,7 +134,7 @@ $("carrossel").addEventListener("pointerup", ev => {
 // ---------------- catálogo ----------------
 function montarChips() {
   const cats = ["Todos", ...(loja.config.mostrarPromocoes !== false ? ["Promoções"] : []),
-    ...new Set(loja.produtos.filter(p => p.ativo).map(p => p.categoria))];
+    ...ordenarCategorias([...new Set(loja.produtos.filter(p => p.ativo).map(p => p.categoria))])];
   $("chips").innerHTML = cats.map(c =>
     `<button class="chip ${c === categoriaAtiva ? "ativo" : ""}" data-cat="${escaparHtml(c)}">${c === "Promoções" ? "🔥 " : ""}${escaparHtml(c)}</button>`
   ).join("");

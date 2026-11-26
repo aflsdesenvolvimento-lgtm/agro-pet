@@ -348,7 +348,7 @@ function abrirEditor(p) {
   $("btnExcluir").classList.toggle("oculto", !p);
   $("secEstoqueNovo").classList.toggle("oculto", !!p || !podeAba("estoque"));
   $("pEstoque").value = ""; $("pEstoqueMin").value = "";
-  $("listaCategorias").innerHTML = [...new Set(loja.produtos.map(x => x.categoria).filter(Boolean))].map(c => `<option value="${escaparHtml(c)}">`).join("");
+  $("listaCategorias").innerHTML = [...new Set([...loja.produtos.map(x => x.categoria).filter(Boolean), ...CATEGORIAS_SUGERIDAS])].map(c => `<option value="${escaparHtml(c)}">`).join("");
   document.querySelectorAll("#formProduto .campo.erro").forEach(c => c.classList.remove("erro"));
   mostrarFoto();
   mostrarPromo();
@@ -1273,7 +1273,7 @@ function abrirBanner(b) {
   $("bBotao").value = bannerEd.botaoTexto || "";
   $("bEscurecer").checked = bannerEd.escurecer !== false;
   $("bAtivo").checked = bannerEd.ativo !== false;
-  const cats = ["Todos", "Promoções", ...new Set(loja.produtos.map(p => p.categoria).filter(Boolean))];
+  const cats = ["Todos", "Promoções", ...ordenarCategorias([...new Set(loja.produtos.map(p => p.categoria).filter(Boolean))])];
   $("bDestino").innerHTML = cats.map(c => `<option value="${escaparHtml(c)}">${c === "Todos" ? "Todos os produtos" : escaparHtml(c)}</option>`).join("");
   $("bDestino").value = cats.includes(bannerEd.botaoCategoria) ? bannerEd.botaoCategoria : "Todos";
   $("btnExcluirBanner").classList.toggle("oculto", bannerEd._novo);
@@ -1500,7 +1500,7 @@ $("btnSalvarCapa").onclick = async () => {
     mostrarPromocoes: $("cPromo").checked,
     textoBusca: $("cBusca").value.trim(),
   });
-  if (await salvarConfig("Identidade e vitrine salvas")) {
+  if (await salvarConfig("Identidade e barra de busca salvas")) {
     if (logoVelho && logoVelho !== logo) apagarImagem(logoVelho);
     if (iconeVelho && iconeVelho !== icone) apagarImagem(iconeVelho);
     montarListaBanners();

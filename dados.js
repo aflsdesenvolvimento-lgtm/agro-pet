@@ -175,7 +175,16 @@ function descontoPct(p) {
 const fmtReal = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 function real(v) { return fmtReal.format(v || 0); }
 
-const ICONE_CATEGORIA = { Cachorro: "🐶", Gato: "🐱", Petiscos: "🦴", Acessórios: "🎾" };
+const ICONE_CATEGORIA = { Cachorro: "🐶", Gato: "🐱", Petiscos: "🦴", Acessórios: "🎾", Medicamentos: "💊" };
+const CATEGORIAS_SUGERIDAS = ["Cachorro", "Gato", "Petiscos", "Acessórios", "Medicamentos"];
+// Medicamentos aparece sempre logo depois de Acessórios (quando a loja tem os dois)
+function ordenarCategorias(cats) {
+  const i = cats.indexOf("Acessórios"), m = cats.indexOf("Medicamentos");
+  if (i < 0 || m < 0) return cats;
+  const r = cats.filter(c => c !== "Medicamentos");
+  r.splice(r.indexOf("Acessórios") + 1, 0, "Medicamentos");
+  return r;
+}
 function iconeDe(cat) { return ICONE_CATEGORIA[cat] || "🐾"; }
 
 function escaparHtml(s) {
