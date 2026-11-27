@@ -316,3 +316,27 @@ img { max-width: 100%; display: block; }
 .lgpd-box { margin-top: 18px; }
 .lgpd-box summary { cursor: pointer; list-style-position: inside; }
 .lgpd-achado { margin-top: 10px; padding: 12px; border-radius: 10px; background: #fff6f4; border: 1px solid #f1c9c2; }
+
+/* celular: o iPhone dá uma largura mínima própria aos campos de data/hora, que estourava a tela
+   (a página inteira encolhia e sobrava uma faixa vazia à direita) */
+input[type="time"], input[type="date"] {
+  -webkit-appearance: none; appearance: none; min-width: 0; max-width: 100%; min-height: 44px; text-align: left;
+}
+input[type="time"]::-webkit-date-and-time-value, input[type="date"]::-webkit-date-and-time-value { text-align: left; }
+.campo input, .campo select, .campo textarea { min-width: 0; max-width: 100%; }
+.regra-frete { min-width: 0; }
+/* regra de taxa: em tela estreita, horários lado a lado e a taxa embaixo, inteira */
+@media (max-width: 480px) {
+  .regra-frete .linha { flex-wrap: wrap; }
+  .regra-frete .linha > .campo { flex: 1 1 calc(50% - 5px); }
+  .regra-frete .linha > .campo:last-child { flex-basis: 100%; }
+}
+/* topo: nome comprido ou botão "Instalar" não podem empurrar a tela pro lado */
+.topo .marca { min-width: 0; }
+.topo .marca > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.topo > button, .topo > a { flex-shrink: 0; white-space: nowrap; }
+.linha > select { min-width: 0; }
+@media (max-width: 400px) {
+  .topo { gap: 8px; padding-left: 12px; padding-right: 12px; }
+  .topo > a, .topo > button { padding: 8px 10px !important; }
+}

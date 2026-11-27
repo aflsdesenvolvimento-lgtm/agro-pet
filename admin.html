@@ -11,7 +11,7 @@
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="Painel Agro Pet">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
-  <link rel="stylesheet" href="estilo.css?v=20261126h">
+  <link rel="stylesheet" href="estilo.css?v=20261127a">
   <style>
     body { padding-bottom: 40px; }
     .topo a { color: #fff; text-decoration: none; background: rgba(255,255,255,.15); border-radius: 999px; padding: 8px 14px; font-weight: 600; }
@@ -161,9 +161,9 @@
     .menu-sep { border-top: 1px solid var(--borda); margin: 8px 0; }
     .voltar-painel { border: 0; background: none; color: var(--verde-escuro); font-weight: 600; padding: 4px 0 12px; cursor: pointer; }
     .permissoes { display: flex; flex-wrap: wrap; gap: 6px; }
-    .permissoes label { border: 1px solid var(--borda); border-radius: 8px; padding: 6px 10px; font-size: 13px; cursor: pointer; background: #fff; }
+    .permissoes label { position: relative; border: 1px solid var(--borda); border-radius: 8px; padding: 6px 10px; font-size: 13px; cursor: pointer; background: #fff; }
     .permissoes label:has(input:checked) { background: var(--verde); color: #fff; border-color: var(--verde); }
-    .permissoes input { position: absolute; opacity: 0; pointer-events: none; }
+    .permissoes input { position: absolute; left: 0; top: 0; width: 1px; height: 1px; margin: 0; opacity: 0; pointer-events: none; } /* invisível e sem largura: não estica a página no celular */
     .lista-equipe { display: flex; flex-direction: column; gap: 10px; }
     .pessoa { border: 1px solid var(--borda); border-radius: 12px; padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
     .pessoa .quem { display: flex; flex-direction: column; gap: 2px; font-size: 14px; }
@@ -774,8 +774,8 @@
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/dist/umd/supabase.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
-  <script src="dados.js?v=20261126h"></script>
-  <script src="admin.js?v=20261126h"></script>
-  <script src="pwa.js?v=20261126h"></script>
+  <script src="dados.js?v=20261127a"></script>
+  <script src="admin.js?v=20261127a"></script>
+  <script src="pwa.js?v=20261127a"></script>
 </body>
 </html>
